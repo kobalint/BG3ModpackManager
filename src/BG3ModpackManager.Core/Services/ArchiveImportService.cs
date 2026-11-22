@@ -199,17 +199,34 @@ public static class ArchiveImportService
                     result.ReusedDuplicateModIds.Add(existing.Id);
                     AssignToProfile(profile, existing.Id, db);
 
-                    if (installActiveNow && existing.Location == ModLocation.Vault)
+                    string activePath = ModLibraryService.GetActivePakPath(settings, existing);
+                    string vaultPath = string.IsNullOrWhiteSpace(settings.VaultFolder)
+                        ? string.Empty
+                        : ModLibraryService.GetVaultPakPath(settings.VaultFolder, existing);
+
+                    if (installActiveNow)
                     {
-                        string activePath = ModLibraryService.GetActivePakPath(settings, existing);
-                        if (!File.Exists(activePath))
+                        if (existing.Location == ModLocation.Vault)
                         {
-                            ModLibraryService.ActivateModFromVault(existing, settings);
+                            if (!File.Exists(activePath))
+                            {
+                                ModLibraryService.ActivateModFromVault(existing, settings);
+                            }
+                            else
+                            {
+                                result.Warnings.Add($"Reused '{existing.DisplayName}' from library, but '{existing.PakFileName}' is already occupied in Mods/.");
+                            }
                         }
-                        else
+                        else if (!File.Exists(activePath) && (string.IsNullOrWhiteSpace(vaultPath) || !File.Exists(vaultPath)))
                         {
-                            result.Warnings.Add($"Reused '{existing.DisplayName}' from library, but '{existing.PakFileName}' is already occupied in Mods/.");
+                            FileTransactionHelper.SafeMoveFile(pakItem.StagingFullPath, activePath);
+                            existing.Location = ModLibraryService.EvaluateModLocation(settings, existing);
                         }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(vaultPath) && !File.Exists(vaultPath) && !File.Exists(activePath))
+                    {
+                        FileTransactionHelper.SafeMoveFile(pakItem.StagingFullPath, vaultPath);
+                        existing.Location = ModLibraryService.EvaluateModLocation(settings, existing);
                     }
 
                     continue;
@@ -253,7 +270,7 @@ public static class ArchiveImportService
                 ? TrackedFileTarget.DataFolder
                 : TrackedFileTarget.GameFolder;
 
-            ModEntry looseMod = await InstallLooseModAsync(
+            (ModEntry looseMod, bool reused) = await InstallLooseModAsync(
                 group.ToList(),
                 target,
                 plan,
@@ -264,15 +281,10 @@ public static class ArchiveImportService
                 progress,
                 cancellationToken);
 
-            ModEntry? existingDup = db.Mods.FirstOrDefault(m => string.Equals(m.ContentHash, looseMod.ContentHash, StringComparison.OrdinalIgnoreCase));
-            if (existingDup is not null)
+            if (reused)
             {
-                result.ReusedDuplicateModIds.Add(existingDup.Id);
-                AssignToProfile(profile, existingDup.Id, db);
-                if (installActiveNow && existingDup.Location == ModLocation.Vault)
-                {
-                    ModLibraryService.ActivateModFromVault(existingDup, settings);
-                }
+                result.ReusedDuplicateModIds.Add(looseMod.Id);
+                AssignToProfile(profile, looseMod.Id, db);
             }
             else
             {
@@ -366,23 +378,57 @@ public static class ArchiveImportService
         ModEntry? existingDup = db.Mods.FirstOrDefault(m => string.Equals(m.ContentHash, compositeHash, StringComparison.OrdinalIgnoreCase));
         if (existingDup is not null)
         {
-            if (installActiveNow && existingDup.Location == ModLocation.Vault)
-            {
-                bool activePakOccupied = !string.IsNullOrWhiteSpace(existingDup.PakFileName) &&
-                                         File.Exists(ModLibraryService.GetActivePakPath(settings, existingDup));
-                bool anyTrackedOccupied = existingDup.TrackedFiles.Any(tf =>
-                    File.Exists(ModLibraryService.GetActiveTrackedFilePath(settings, tf)));
+            string? activePak = !string.IsNullOrWhiteSpace(existingDup.PakFileName)
+                ? ModLibraryService.GetActivePakPath(settings, existingDup)
+                : null;
+            string? vaultPak = !string.IsNullOrWhiteSpace(existingDup.PakFileName) && !string.IsNullOrWhiteSpace(settings.VaultFolder)
+                ? ModLibraryService.GetVaultPakPath(settings.VaultFolder, existingDup)
+                : null;
 
-                if (!activePakOccupied && !anyTrackedOccupied)
+            if (installActiveNow)
+            {
+                if (existingDup.Location == ModLocation.Vault)
                 {
-                    ModLibraryService.ActivateModFromVault(existingDup, settings);
+                    bool activePakOccupied = activePak is not null && File.Exists(activePak);
+                    if (!activePakOccupied)
+                    {
+                        ModLibraryService.ActivateModFromVault(existingDup, settings);
+                    }
+                    else
+                    {
+                        result.Warnings.Add($"Reused '{existingDup.DisplayName}' from Vault, but destination slot is currently occupied.");
+                    }
                 }
-                else
+
+                if (activePak is not null && (vaultPak is null || !File.Exists(vaultPak)))
                 {
-                    result.Warnings.Add($"Reused '{existingDup.DisplayName}' from Vault, but destination slot is currently occupied.");
+                    bool activePakMatches = File.Exists(activePak) &&
+                                            string.Equals(HashService.ComputeFileSha256(activePak), pakSha, StringComparison.OrdinalIgnoreCase);
+                    if (!activePakMatches)
+                    {
+                        if (File.Exists(activePak))
+                        {
+                            BackupFileToVault(activePak, Path.Combine("Mods", existingDup.PakFileName!), settings, result);
+                            File.Delete(activePak);
+                        }
+
+                        FileTransactionHelper.SafeMoveFile(pakItem.StagingFullPath, activePak);
+                    }
                 }
+
+                RepairExistingTrackedFiles(existingDup, stagedMoves, installActiveNow: true, settings, db, result);
+            }
+            else
+            {
+                if (vaultPak is not null && !File.Exists(vaultPak) && (activePak is null || !File.Exists(activePak)))
+                {
+                    FileTransactionHelper.SafeMoveFile(pakItem.StagingFullPath, vaultPak);
+                }
+
+                RepairExistingTrackedFiles(existingDup, stagedMoves, installActiveNow: false, settings, db, result);
             }
 
+            existingDup.Location = ModLibraryService.EvaluateModLocation(settings, existingDup);
             return (existingDup, true);
         }
 
@@ -467,7 +513,7 @@ public static class ArchiveImportService
         return (hybrid, false);
     }
 
-    private static async Task<ModEntry> InstallLooseModAsync(
+    private static async Task<(ModEntry Entry, bool Reused)> InstallLooseModAsync(
         List<ImportItemCandidate> candidates,
         TrackedFileTarget target,
         ArchiveImportPlan plan,
@@ -516,7 +562,14 @@ public static class ArchiveImportService
         ModEntry? duplicate = db.Mods.FirstOrDefault(m => string.Equals(m.ContentHash, compositeHash, StringComparison.OrdinalIgnoreCase));
         if (duplicate is not null)
         {
-            return duplicate;
+            if (installActiveNow && duplicate.Location == ModLocation.Vault)
+            {
+                ModLibraryService.ActivateModFromVault(duplicate, settings);
+            }
+
+            RepairExistingTrackedFiles(duplicate, stagedMoves, installActiveNow, settings, db, result);
+            duplicate.Location = ModLibraryService.EvaluateModLocation(settings, duplicate);
+            return (duplicate, true);
         }
 
         string baseName = !string.IsNullOrWhiteSpace(plan.CustomDisplayName)
@@ -574,7 +627,82 @@ public static class ArchiveImportService
         }
 
         looseMod.Location = ModLibraryService.EvaluateModLocation(settings, looseMod);
-        return looseMod;
+        return (looseMod, false);
+    }
+
+    private static void RepairExistingTrackedFiles(
+        ModEntry existingMod,
+        List<(string StagePath, TrackedFileRecord Record)> stagedMoves,
+        bool installActiveNow,
+        AppSettings settings,
+        LibraryDatabase db,
+        ArchiveImportResult result)
+    {
+        foreach ((string stageFile, TrackedFileRecord rec) in stagedMoves)
+        {
+            string activeFile = ModLibraryService.GetActiveTrackedFilePath(settings, rec);
+            string vaultFile = string.IsNullOrWhiteSpace(settings.VaultFolder)
+                ? string.Empty
+                : ModLibraryService.GetVaultTrackedFilePath(settings.VaultFolder, existingMod, rec);
+
+            bool activeMatches = File.Exists(activeFile) &&
+                                 string.Equals(HashService.ComputeFileSha256(activeFile), rec.Sha256, StringComparison.OrdinalIgnoreCase);
+
+            if (installActiveNow)
+            {
+                if (activeMatches)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(vaultFile) && File.Exists(vaultFile))
+                {
+                    if (File.Exists(activeFile))
+                    {
+                        ModLibraryService.ReplaceActiveTrackedFileSafely(
+                            activeFile,
+                            rec,
+                            rec.Sha256,
+                            existingMod,
+                            settings,
+                            db,
+                            result.BackedUpUnmanagedFiles,
+                            result.RenamedOriginalFiles);
+                    }
+
+                    FileTransactionHelper.SafeMoveFile(vaultFile, activeFile);
+                    string bucket = rec.Target == TrackedFileTarget.DataFolder ? "data" : "game";
+                    string modRoot = Path.Combine(settings.VaultFolder, bucket, existingMod.Id);
+                    FileTransactionHelper.PruneEmptyParentDirectories(vaultFile, modRoot);
+                    if (Directory.Exists(modRoot) && !Directory.EnumerateFileSystemEntries(modRoot).Any())
+                    {
+                        Directory.Delete(modRoot, recursive: false);
+                    }
+                }
+                else
+                {
+                    if (File.Exists(activeFile))
+                    {
+                        ModLibraryService.ReplaceActiveTrackedFileSafely(
+                            activeFile,
+                            rec,
+                            rec.Sha256,
+                            existingMod,
+                            settings,
+                            db,
+                            result.BackedUpUnmanagedFiles,
+                            result.RenamedOriginalFiles);
+                    }
+
+                    existingMod.BackupReplacedOriginals = true;
+                    FileTransactionHelper.SafeMoveFile(stageFile, activeFile);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(vaultFile) && !File.Exists(vaultFile) && !activeMatches)
+            {
+                FileTransactionHelper.SafeMoveFile(stageFile, vaultFile);
+            }
+        }
     }
 
     private static async Task PopulateCandidatesAsync(
@@ -671,9 +799,18 @@ public static class ArchiveImportService
                         string destFull = FileTransactionHelper.ResolveContainedPath(targetRoot, destRel);
                         if (File.Exists(destFull))
                         {
-                            bool tracked = db.Mods.Any(m => m.TrackedFiles.Any(tf =>
-                                tf.Target == (grp.Target == ImportTargetKind.DataFolder ? TrackedFileTarget.DataFolder : TrackedFileTarget.GameFolder) &&
-                                string.Equals(tf.RelativePath, destRel, StringComparison.OrdinalIgnoreCase)));
+                            TrackedFileTarget targetEnum = grp.Target == ImportTargetKind.DataFolder
+                                ? TrackedFileTarget.DataFolder
+                                : TrackedFileTarget.GameFolder;
+
+                            bool tracked = db.Mods.Any(m =>
+                                ModLibraryService.EvaluateModLocation(settings, m) == ModLocation.Active &&
+                                m.TrackedFiles.Any(tf =>
+                                    tf.Target == targetEnum &&
+                                    string.Equals(tf.RelativePath, destRel, StringComparison.OrdinalIgnoreCase) &&
+                                    (string.IsNullOrWhiteSpace(tf.Sha256) ||
+                                     (new FileInfo(destFull).Length == tf.FileSizeBytes &&
+                                      string.Equals(HashService.ComputeFileSha256(destFull), tf.Sha256, StringComparison.OrdinalIgnoreCase)))));
                             if (!tracked)
                             {
                                 overwritesUnmanaged = true;

@@ -9,6 +9,11 @@ namespace BG3ModpackManager.Core.Services;
 /// </summary>
 public static class ModLibraryService
 {
+    private static readonly HashSet<string> EditableConfigExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".toml", ".ini", ".cfg", ".json", ".txt", ".xml"
+    };
+
     public static string GetActivePakPath(AppSettings settings, ModEntry mod)
     {
         if (string.IsNullOrWhiteSpace(mod.PakFileName))
@@ -198,9 +203,19 @@ public static class ModLibraryService
             {
                 vaultParts++;
             }
-            else if (!string.IsNullOrWhiteSpace(activeRoot) && File.Exists(GetActiveTrackedFilePath(settings, tf)))
+            else if (!string.IsNullOrWhiteSpace(activeRoot))
             {
-                activeParts++;
+                string activePath = GetActiveTrackedFilePath(settings, tf);
+                if (File.Exists(activePath))
+                {
+                    bool sizeMatches = tf.FileSizeBytes <= 0 ||
+                                       EditableConfigExtensions.Contains(Path.GetExtension(tf.RelativePath)) ||
+                                       new FileInfo(activePath).Length == tf.FileSizeBytes;
+                    if (sizeMatches)
+                    {
+                        activeParts++;
+                    }
+                }
             }
         }
 

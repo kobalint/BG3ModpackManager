@@ -14,6 +14,7 @@ internal static class ArchiveImportTests
         await TestHybridSingleModImportAndDeduplicationAsync();
         await TestSevenZipMariDataImportAndPruningAsync();
         await TestNativeModLoaderOriginalBackupRestoreAndUninstallAsync();
+        await TestReimportRepairsMissingAndOverwrittenLooseAndPakModsAsync();
         await TestZipSlipRejectedAsync();
         TestDeletableArchiveExtensionDetection();
     }
@@ -324,6 +325,200 @@ internal static class ArchiveImportTests
         TestAssert.True(ArchiveImportService.IsDeletableArchiveFile(sevenZ), ".7z is deletable archive");
         TestAssert.False(ArchiveImportService.IsDeletableArchiveFile(pak), ".pak is NOT an archive");
         TestAssert.False(ArchiveImportService.IsDeletableArchiveFile(sandbox.Root), "Folder is NOT an archive");
+    }
+
+    private static async Task TestReimportRepairsMissingAndOverwrittenLooseAndPakModsAsync()
+    {
+        using var sandbox = new TempSandbox();
+
+        string binDir = Path.Combine(sandbox.Settings.GameFolder, "bin");
+        Directory.CreateDirectory(binDir);
+        string activeBink = Path.Combine(binDir, "bink2w64.dll");
+        string activeBinkOrig = Path.Combine(binDir, "bink2w64_original.dll");
+        string backupOrig = Path.Combine(binDir, "bink2w64.dll.bg3mpm_orig");
+
+        byte[] vanillaBytes = "VANILLA_BINK_411136_BYTES_SIMULATED_LONGER_PAYLOAD"u8.ToArray();
+        byte[] moddedBinkBytes = "MODDED_NML_232448"u8.ToArray();
+        await File.WriteAllBytesAsync(activeBink, vanillaBytes);
+        string vanillaSha = await HashService.ComputeFileSha256Async(activeBink);
+
+        string nmlZip = Path.Combine(sandbox.Root, "NativeModLoader.zip");
+        using (ZipArchive z = ZipFile.Open(nmlZip, ZipArchiveMode.Create))
+        {
+            WriteZipEntry(z, "bin/bink2w64.dll", moddedBinkBytes);
+            WriteZipEntry(z, "bin/bink2w64_original.dll", vanillaBytes);
+        }
+
+        // 1. Initial install over vanilla bink2w64.dll
+        ArchiveImportPlan plan1 = await ArchiveImportService.InspectDropAsync(nmlZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            ArchiveImportResult res1 = await ArchiveImportService.CommitImportAsync(plan1, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+            TestAssert.Equal(0, res1.Errors.Count, "Initial NML import succeeds");
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(plan1);
+        }
+
+        ModEntry nmlMod = sandbox.Db.Mods.Single();
+        nmlMod.ReplacedOriginalFiles.Clear();
+
+        // 2. Simulate Steam/GOG Verify Game Files + empty Vault:
+        //    vanilla bink2w64.dll overwrites activeBink (different length), bink2w64_original.dll and .bg3mpm_orig are deleted.
+        await File.WriteAllBytesAsync(activeBink, vanillaBytes);
+        if (File.Exists(activeBinkOrig)) File.Delete(activeBinkOrig);
+        if (File.Exists(backupOrig)) File.Delete(backupOrig);
+
+        // EvaluateModLocation must NOT treat the vanilla bink2w64.dll (wrong size) as an active mod file.
+        TestAssert.Equal(ModLocation.Missing, ModLibraryService.EvaluateModLocation(sandbox.Settings, nmlMod),
+            "Vanilla bink2w64.dll with wrong file size must evaluate to Missing, not Partial/Active");
+
+        // User-edited .toml config file must still evaluate as Active even if size changed.
+        string nativeModsDir = Path.Combine(binDir, "NativeMods");
+        Directory.CreateDirectory(nativeModsDir);
+        string tomlPath = Path.Combine(nativeModsDir, "TestPlugin.toml");
+        await File.WriteAllTextAsync(tomlPath, "enabled=true");
+        var tomlMod = new ModEntry
+        {
+            Id = "toml-edit-test",
+            Kind = ModKind.LooseGame,
+            DisplayName = "Toml Test",
+            Location = ModLocation.Active,
+            TrackedFiles = new List<TrackedFileRecord>
+            {
+                new()
+                {
+                    Target = TrackedFileTarget.GameFolder,
+                    RelativePath = "bin/NativeMods/TestPlugin.toml",
+                    FileSizeBytes = 12,
+                    Sha256 = await HashService.ComputeFileSha256Async(tomlPath)
+                }
+            }
+        };
+        await File.WriteAllTextAsync(tomlPath, "enabled=false\n# edited by user");
+        TestAssert.Equal(ModLocation.Active, ModLibraryService.EvaluateModLocation(sandbox.Settings, tomlMod),
+            "User-edited .toml config file remains Active despite size change");
+
+        // 3. Re-drop NativeModLoader.zip -> must detect overwrite of vanilla bink2w64.dll & reinstall both DLLs!
+        ArchiveImportPlan plan2 = await ArchiveImportService.InspectDropAsync(nmlZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            TestAssert.True(
+                plan2.Items.Any(i => i.TargetKind == ImportTargetKind.GameFolder && i.OverwritesUnmanagedFile),
+                "Preview flags vanilla bink2w64.dll overwrite when existing NML is Missing/Partial");
+
+            ArchiveImportResult res2 = await ArchiveImportService.CommitImportAsync(plan2, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+            TestAssert.Equal(0, res2.Errors.Count, "Re-import of NML succeeds with 0 errors");
+            TestAssert.Equal(0, res2.ImportedModIds.Count, "Reuses existing NML ModEntry without creating duplicate");
+            TestAssert.Equal(1, res2.ReusedDuplicateModIds.Count, "NML reused once");
+            TestAssert.Equal(1, sandbox.Db.Mods.Count, "Still 1 NML entry in library");
+            TestAssert.Equal(1, res2.RenamedOriginalFiles.Count, "Vanilla bink2w64.dll backed up to .bg3mpm_orig on repair");
+            TestAssert.True(File.Exists(backupOrig), "Backup file bink2w64.dll.bg3mpm_orig created");
+            TestAssert.EqualIgnoreCase(vanillaSha, await HashService.ComputeFileSha256Async(backupOrig), "Backup has exact vanilla DLL");
+            TestAssert.Equal(moddedBinkBytes.Length, (int)new FileInfo(activeBink).Length, "Modded bink2w64.dll installed in bin/");
+            TestAssert.True(File.Exists(activeBinkOrig), "bink2w64_original.dll installed in bin/");
+            TestAssert.EqualIgnoreCase(vanillaSha, await HashService.ComputeFileSha256Async(activeBinkOrig), "bink2w64_original.dll intact in bin/");
+            TestAssert.Equal(ModLocation.Active, nmlMod.Location, "NML Location repaired to Active");
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(plan2);
+        }
+
+        // 4. Re-drop NativeModLoader.zip a third time while already Active -> zero redundant backups!
+        ArchiveImportPlan plan3 = await ArchiveImportService.InspectDropAsync(nmlZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            ArchiveImportResult res3 = await ArchiveImportService.CommitImportAsync(plan3, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+            TestAssert.Equal(0, res3.Errors.Count, "Idempotent re-import succeeds");
+            TestAssert.Equal(0, res3.RenamedOriginalFiles.Count, "Already-active NML creates no extra backup");
+            TestAssert.Equal(ModLocation.Active, nmlMod.Location, "NML stays Active");
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(plan3);
+        }
+
+        // 5. Missing PAK mod repaired on re-import
+        string pakSrcDir = Path.Combine(sandbox.Root, "pak_repair_src");
+        TestPakBuilder.CreatePakV18(Path.Combine(pakSrcDir, "RepairPak.pak"), new[]
+        {
+            ("Mods/RepairPak/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("RepairPak", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "RepairPak")), TestPakBuilder.PayloadCompression.None)
+        });
+        string pakZip = Path.Combine(sandbox.Root, "RepairPak.zip");
+        ZipFile.CreateFromDirectory(pakSrcDir, pakZip);
+
+        ArchiveImportPlan pakPlan1 = await ArchiveImportService.InspectDropAsync(pakZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            await ArchiveImportService.CommitImportAsync(pakPlan1, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(pakPlan1);
+        }
+
+        string activePakPath = Path.Combine(sandbox.Settings.ModsFolder, "RepairPak.pak");
+        ModEntry pakMod = sandbox.Db.Mods.Single(m => m.PakFileName == "RepairPak.pak");
+        File.Delete(activePakPath);
+        TestAssert.Equal(ModLocation.Missing, ModLibraryService.EvaluateModLocation(sandbox.Settings, pakMod), "Deleted PAK evaluates Missing");
+
+        ArchiveImportPlan pakPlan2 = await ArchiveImportService.InspectDropAsync(pakZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            ArchiveImportResult pakRes2 = await ArchiveImportService.CommitImportAsync(pakPlan2, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+            TestAssert.Equal(1, pakRes2.ReusedDuplicateModIds.Count, "PAK entry reused");
+            TestAssert.True(File.Exists(activePakPath), "Deleted PAK repaired into Mods/ on re-import");
+            TestAssert.Equal(ModLocation.Active, pakMod.Location, "Repaired PAK evaluates Active");
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(pakPlan2);
+        }
+
+        // 6. Missing Hybrid mod repaired on re-import
+        string hybSrcDir = Path.Combine(sandbox.Root, "hyb_repair_src");
+        TestPakBuilder.CreatePakV18(Path.Combine(hybSrcDir, "RepairHybrid.pak"), new[]
+        {
+            ("Mods/RepairHybrid/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("RepairHybrid", "11111111-2222-3333-4444-555555555555", "RepairHybrid")), TestPakBuilder.PayloadCompression.None)
+        });
+        string hybLooseSrc = Path.Combine(hybSrcDir, "Generated", "Public", "Shared", "Assets", "hyb.dds");
+        Directory.CreateDirectory(Path.GetDirectoryName(hybLooseSrc)!);
+        await File.WriteAllBytesAsync(hybLooseSrc, new byte[] { 7, 8, 9, 10 });
+        string hybZip = Path.Combine(sandbox.Root, "RepairHybrid.zip");
+        ZipFile.CreateFromDirectory(hybSrcDir, hybZip);
+
+        ArchiveImportPlan hybPlan1 = await ArchiveImportService.InspectDropAsync(hybZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            await ArchiveImportService.CommitImportAsync(hybPlan1, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(hybPlan1);
+        }
+
+        ModEntry hybMod = sandbox.Db.Mods.Single(m => m.Kind == ModKind.Hybrid);
+        string activeHybPak = Path.Combine(sandbox.Settings.ModsFolder, "RepairHybrid.pak");
+        string activeHybDds = Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "Shared", "Assets", "hyb.dds");
+        File.Delete(activeHybPak);
+        File.Delete(activeHybDds);
+        TestAssert.Equal(ModLocation.Missing, ModLibraryService.EvaluateModLocation(sandbox.Settings, hybMod), "Deleted Hybrid files evaluate Missing");
+
+        ArchiveImportPlan hybPlan2 = await ArchiveImportService.InspectDropAsync(hybZip, sandbox.Settings, sandbox.Db);
+        try
+        {
+            ArchiveImportResult hybRes2 = await ArchiveImportService.CommitImportAsync(hybPlan2, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+            TestAssert.Equal(1, hybRes2.ReusedDuplicateModIds.Count, "Hybrid entry reused");
+            TestAssert.True(File.Exists(activeHybPak), "Deleted Hybrid PAK repaired");
+            TestAssert.True(File.Exists(activeHybDds), "Deleted Hybrid loose DDS repaired");
+            TestAssert.Equal(ModLocation.Active, hybMod.Location, "Repaired Hybrid evaluates Active");
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(hybPlan2);
+        }
     }
 
     private static void WriteZipEntry(ZipArchive archive, string entryName, byte[] data)

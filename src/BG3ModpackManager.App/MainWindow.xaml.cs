@@ -173,19 +173,28 @@ public partial class MainWindow : Window
             QuickActionCol0.Width = GridLength.Auto;
             QuickActionCol1.Width = GridLength.Auto;
             QuickActionCol2.Width = GridLength.Auto;
+            QuickActionCol3.Width = GridLength.Auto;
 
             Grid.SetRow(StartBg3Button, 0);
             Grid.SetColumn(StartBg3Button, 0);
             StartBg3Button.Margin = new Thickness(0, 0, 6, 0);
             StartBg3Button.Padding = new Thickness(10, 5, 10, 5);
 
+            Thickness narrowFolderPad = new Thickness(10, 5, 10, 5);
             Grid.SetRow(OpenModsFolderButton, 0);
             Grid.SetColumn(OpenModsFolderButton, 1);
             OpenModsFolderButton.Margin = new Thickness(0, 0, 6, 0);
+            OpenModsFolderButton.Padding = narrowFolderPad;
 
             Grid.SetRow(OpenGameFolderButton, 0);
             Grid.SetColumn(OpenGameFolderButton, 2);
-            OpenGameFolderButton.Margin = new Thickness(0);
+            OpenGameFolderButton.Margin = new Thickness(0, 0, 6, 0);
+            OpenGameFolderButton.Padding = narrowFolderPad;
+
+            Grid.SetRow(OpenVaultFolderButton, 0);
+            Grid.SetColumn(OpenVaultFolderButton, 3);
+            OpenVaultFolderButton.Margin = new Thickness(0);
+            OpenVaultFolderButton.Padding = narrowFolderPad;
 
             SidebarFooterBorder.Visibility = Visibility.Collapsed;
             StatusBarStatsText.Visibility = Visibility.Visible;
@@ -216,7 +225,7 @@ public partial class MainWindow : Window
             NavBorder.BorderThickness = new Thickness(0, 0, 1, 0);
 
             NavItemsPanel.Orientation = Orientation.Vertical;
-            NavItemsPanel.Margin = new Thickness(0, 10, 0, 0);
+            NavItemsPanel.Margin = compactHeight ? new Thickness(0, 4, 0, 0) : new Thickness(0, 10, 0, 0);
             SetNavButtonStyle("NavButton");
 
             NavSpacerRow.Height = new GridLength(1, GridUnitType.Star);
@@ -226,20 +235,32 @@ public partial class MainWindow : Window
             QuickActionCol0.Width = new GridLength(1, GridUnitType.Star);
             QuickActionCol1.Width = new GridLength(0);
             QuickActionCol2.Width = new GridLength(0);
+            QuickActionCol3.Width = new GridLength(0);
+
+            double gap = compactHeight ? 4 : 6;
+            Thickness folderPad = compactHeight ? new Thickness(10, 4, 10, 4) : new Thickness(10, 5, 10, 5);
 
             Grid.SetRow(StartBg3Button, 0);
             Grid.SetColumn(StartBg3Button, 0);
-            StartBg3Button.Margin = new Thickness(0, 0, 0, 6);
+            StartBg3Button.Margin = new Thickness(0, 0, 0, gap);
             StartBg3Button.Padding = compactHeight ? new Thickness(10, 4, 10, 4) : new Thickness(10, 6, 10, 6);
 
             Grid.SetRow(OpenModsFolderButton, 1);
             Grid.SetColumn(OpenModsFolderButton, 0);
-            OpenModsFolderButton.Margin = new Thickness(0, 0, 0, 6);
+            OpenModsFolderButton.Margin = new Thickness(0, 0, 0, gap);
+            OpenModsFolderButton.Padding = folderPad;
 
             Grid.SetRow(OpenGameFolderButton, 2);
             Grid.SetColumn(OpenGameFolderButton, 0);
-            OpenGameFolderButton.Margin = new Thickness(0);
+            OpenGameFolderButton.Margin = new Thickness(0, 0, 0, gap);
+            OpenGameFolderButton.Padding = folderPad;
 
+            Grid.SetRow(OpenVaultFolderButton, 3);
+            Grid.SetColumn(OpenVaultFolderButton, 0);
+            OpenVaultFolderButton.Margin = new Thickness(0);
+            OpenVaultFolderButton.Padding = folderPad;
+
+            SidebarFooterBorder.Padding = compactHeight ? new Thickness(14, 8, 14, 8) : new Thickness(14, 12, 14, 12);
             SidebarFooterBorder.Visibility = Visibility.Visible;
             StatusBarStatsText.Visibility = Visibility.Collapsed;
 
@@ -374,8 +395,9 @@ public partial class MainWindow : Window
         {
             StartBg3TitleText.Text = Loc.F("Nav.StartBg3InlineFormat", rendererShort);
             StartBg3RendererText.Visibility = Visibility.Collapsed;
-            OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolder");
-            OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolder");
+            OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolderCompact");
+            OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolderCompact");
+            OpenVaultFolderText.Text = Loc.T("Nav.OpenVaultFolderCompact");
         }
         else if (tier == LayoutTier.Medium)
         {
@@ -384,6 +406,7 @@ public partial class MainWindow : Window
             StartBg3RendererText.Visibility = Visibility.Visible;
             OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolderCompact");
             OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolderCompact");
+            OpenVaultFolderText.Text = Loc.T("Nav.OpenVaultFolderCompact");
         }
         else
         {
@@ -392,6 +415,7 @@ public partial class MainWindow : Window
             StartBg3RendererText.Visibility = Visibility.Visible;
             OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolder");
             OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolder");
+            OpenVaultFolderText.Text = Loc.T("Nav.OpenVaultFolder");
         }
 
         Bg3LaunchResolution resolution = GameLauncherService.ResolveExecutable(_state.Settings);
@@ -410,6 +434,11 @@ public partial class MainWindow : Window
         OpenGameFolderButton.ToolTip = string.IsNullOrWhiteSpace(gameFolder)
             ? Loc.T("App.OpenGameFolder.TooltipNotSet")
             : Loc.F("App.OpenGameFolder.TooltipFormat", gameFolder);
+
+        string vaultFolder = _state.Settings.VaultFolder.Trim();
+        OpenVaultFolderButton.ToolTip = string.IsNullOrWhiteSpace(vaultFolder)
+            ? Loc.T("App.OpenVaultFolder.TooltipNotSet")
+            : Loc.F("App.OpenVaultFolder.TooltipFormat", vaultFolder);
     }
 
     private void OnNavChecked(object sender, RoutedEventArgs e)
@@ -506,6 +535,9 @@ public partial class MainWindow : Window
 
     private void OnOpenGameFolderClick(object sender, RoutedEventArgs e)
         => OpenConfiguredFolder(GameLauncherService.ResolveGameFolder(_state.Settings));
+
+    private void OnOpenVaultFolderClick(object sender, RoutedEventArgs e)
+        => OpenConfiguredFolder(_state.Settings.VaultFolder);
 
     private void OpenConfiguredFolder(string? path)
     {

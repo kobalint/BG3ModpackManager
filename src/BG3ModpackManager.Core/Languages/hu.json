@@ -59,6 +59,8 @@
     "App.OpenModsFolder.TooltipNotSet": "Állítsd be a BG3 Mods mappát a Beállításokban.",
     "App.OpenGameFolder.TooltipFormat": "BG3 játék főmappa megnyitása\n{0}",
     "App.OpenGameFolder.TooltipNotSet": "Állítsd be a BG3 játék főmappáját a Beállításokban.",
+    "App.OpenVaultFolder.TooltipFormat": "Mod Széf mappa megnyitása\n{0}",
+    "App.OpenVaultFolder.TooltipNotSet": "Állítsd be a Mod Széf mappát a Beállításokban.",
     "App.OpenFolder.MissingMsg": "A beállított mappa nem létezik:\n{0}\n\nEllenőrizd az útvonalat a Beállításokban.",
 
     "Nav.Profiles": "Profilok",
@@ -77,6 +79,8 @@
     "Nav.OpenModsFolderCompact": "Mods mappa",
     "Nav.OpenGameFolder": "Game mappa megnyitása",
     "Nav.OpenGameFolderCompact": "Game mappa",
+    "Nav.OpenVaultFolder": "Széf mappa megnyitása",
+    "Nav.OpenVaultFolderCompact": "Széf mappa",
 
     "Common.Cancel": "Mégse",
     "Common.Confirm": "Megerősítés",

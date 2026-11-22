@@ -59,6 +59,8 @@
     "App.OpenModsFolder.TooltipNotSet": "Configure the BG3 Mods Folder in Settings.",
     "App.OpenGameFolder.TooltipFormat": "Open BG3 Game folder\n{0}",
     "App.OpenGameFolder.TooltipNotSet": "Configure the BG3 Game Folder in Settings.",
+    "App.OpenVaultFolder.TooltipFormat": "Open Mod Vault folder\n{0}",
+    "App.OpenVaultFolder.TooltipNotSet": "Configure the Mod Vault Folder in Settings.",
     "App.OpenFolder.MissingMsg": "Configured folder does not exist:\n{0}\n\nCheck your path in Settings.",
 
     "Nav.Profiles": "Profiles",
@@ -77,6 +79,8 @@
     "Nav.OpenModsFolderCompact": "Mods Folder",
     "Nav.OpenGameFolder": "Open Game Folder",
     "Nav.OpenGameFolderCompact": "Game Folder",
+    "Nav.OpenVaultFolder": "Open Vault Folder",
+    "Nav.OpenVaultFolderCompact": "Vault Folder",
 
     "Common.Cancel": "Cancel",
     "Common.Confirm": "Confirm",
