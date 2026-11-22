@@ -30,6 +30,16 @@ public enum AppTheme
 }
 
 /// <summary>
+/// Controls which Baldur's Gate 3 graphics API executable is launched.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum Bg3LaunchRenderer
+{
+    Vulkan,
+    DirectX11
+}
+
+/// <summary>
 /// Persisted application paths, UI theme, language, and switching preferences.
 /// </summary>
 public sealed class AppSettings
@@ -46,4 +56,5 @@ public sealed class AppSettings
     public string? LastExportFolder { get; set; }
     public AppTheme Theme { get; set; } = AppTheme.Dark;
     public string LanguageCode { get; set; } = "en";
+    public Bg3LaunchRenderer LaunchRenderer { get; set; } = Bg3LaunchRenderer.DirectX11;
 }

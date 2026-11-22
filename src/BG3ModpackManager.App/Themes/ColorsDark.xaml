@@ -70,4 +70,10 @@
     <SolidColorBrush x:Key="BrushDangerFg" Color="#FFD0CC" />
     <SolidColorBrush x:Key="BrushDangerBorder" Color="#A62119" />
 
+    <SolidColorBrush x:Key="BrushLaunchBg" Color="#1F7A4A" />
+    <SolidColorBrush x:Key="BrushLaunchHover" Color="#27945B" />
+    <SolidColorBrush x:Key="BrushLaunchPressed" Color="#175E38" />
+    <SolidColorBrush x:Key="BrushLaunchBorder" Color="#34B871" />
+    <SolidColorBrush x:Key="BrushLaunchForeground" Color="#F4FFF8" />
+
 </ResourceDictionary>

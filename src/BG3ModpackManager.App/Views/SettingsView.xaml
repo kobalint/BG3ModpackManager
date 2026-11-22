@@ -128,6 +128,35 @@
                 </StackPanel>
             </Border>
 
+            <!-- Game Launch Card -->
+            <Border Style="{StaticResource CardBorder}" Padding="16" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{helpers:Loc Settings.Card.Launch}" FontSize="14.5" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="135" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{helpers:Loc Settings.LaunchRendererLabel}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                            <RadioButton x:Name="LaunchDx11Radio"
+                                         Content="{helpers:Loc Settings.Launch.DirectX11}"
+                                         GroupName="Bg3LaunchRenderer"
+                                         Checked="OnLaunchRendererRadioChecked"
+                                         Margin="0,2,22,2" />
+                            <RadioButton x:Name="LaunchVulkanRadio"
+                                         Content="{helpers:Loc Settings.Launch.Vulkan}"
+                                         GroupName="Bg3LaunchRenderer"
+                                         Checked="OnLaunchRendererRadioChecked"
+                                         Margin="0,2,0,2" />
+                        </WrapPanel>
+                    </Grid>
+
+                    <TextBlock x:Name="LaunchExeStatusText" FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+
             <!-- Behavior Card -->
             <Border Style="{StaticResource CardBorder}" Padding="16" Margin="0,0,0,16">
                 <StackPanel>

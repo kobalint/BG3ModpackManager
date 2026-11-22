@@ -108,15 +108,15 @@
                     Background="{DynamicResource BrushBgSidebar}"
                     BorderBrush="{DynamicResource BrushBorder}"
                     BorderThickness="0,0,1,0">
-                <DockPanel>
-                    <Border x:Name="SidebarFooterBorder" DockPanel.Dock="Bottom" Padding="14,12" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
-                        <StackPanel>
-                            <TextBlock Text="{helpers:Loc App.PortableMode}" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushAccentSoft}" />
-                            <TextBlock x:Name="SidebarStatsText" Style="{StaticResource MutedCaption}" Margin="0,3,0,0" />
-                        </StackPanel>
-                    </Border>
+                <Grid x:Name="NavLayoutGrid">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition x:Name="NavSpacerRow" Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <StackPanel x:Name="NavItemsPanel" Orientation="Vertical" Margin="0,10,0,0">
+                    <StackPanel x:Name="NavItemsPanel" Grid.Row="0" Orientation="Vertical" Margin="0,10,0,0">
                         <RadioButton x:Name="NavProfiles" Style="{StaticResource NavButton}" IsChecked="True" Checked="OnNavChecked">
                             <DockPanel LastChildFill="True">
                                 <Border DockPanel.Dock="Right" Background="{DynamicResource BrushBgElevated}" CornerRadius="10" Padding="7,1" Margin="6,0,0,0">
@@ -148,7 +148,86 @@
                             <TextBlock Text="{helpers:Loc Nav.Settings}" VerticalAlignment="Center" />
                         </RadioButton>
                     </StackPanel>
-                </DockPanel>
+
+                    <!-- Quick Launch & Folder Actions (Sidebar stack in Wide/Medium; horizontal strip in Narrow) -->
+                    <Border x:Name="QuickActionsBorder"
+                            Grid.Row="1"
+                            BorderBrush="{DynamicResource BrushBorder}"
+                            BorderThickness="0,1,0,0"
+                            Margin="10,8,10,0"
+                            Padding="0,10,0,0">
+                        <StackPanel>
+                            <TextBlock x:Name="QuickActionsHeaderText"
+                                       Text="{helpers:Loc Nav.QuickActions}"
+                                       FontSize="10.5"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource BrushTextMuted}"
+                                       Margin="4,0,0,8" />
+                            <Grid x:Name="QuickActionsGrid">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="QuickActionCol0" Width="*" />
+                                    <ColumnDefinition x:Name="QuickActionCol1" Width="0" />
+                                    <ColumnDefinition x:Name="QuickActionCol2" Width="0" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button x:Name="StartBg3Button"
+                                        Grid.Row="0"
+                                        Grid.Column="0"
+                                        Style="{StaticResource LaunchButton}"
+                                        Click="OnStartBg3Click"
+                                        Padding="10,6"
+                                        Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <TextBlock x:Name="StartBg3TitleText"
+                                                   Foreground="{DynamicResource BrushLaunchForeground}"
+                                                   HorizontalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="StartBg3RendererText"
+                                                   Foreground="{DynamicResource BrushLaunchForeground}"
+                                                   FontSize="10.5"
+                                                   Opacity="0.88"
+                                                   HorizontalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button x:Name="OpenModsFolderButton"
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Click="OnOpenModsFolderClick"
+                                        Padding="10,5"
+                                        Margin="0,0,0,6">
+                                    <TextBlock x:Name="OpenModsFolderText"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Button>
+
+                                <Button x:Name="OpenGameFolderButton"
+                                        Grid.Row="2"
+                                        Grid.Column="0"
+                                        Click="OnOpenGameFolderClick"
+                                        Padding="10,5"
+                                        Margin="0">
+                                    <TextBlock x:Name="OpenGameFolderText"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="SidebarFooterBorder" Grid.Row="3" Padding="14,12" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
+                        <StackPanel>
+                            <TextBlock Text="{helpers:Loc App.PortableMode}" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushAccentSoft}" />
+                            <TextBlock x:Name="SidebarStatsText" Style="{StaticResource MutedCaption}" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Border>
 
             <!-- Active View Host -->

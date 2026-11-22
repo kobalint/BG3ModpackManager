@@ -8,6 +8,7 @@ internal static class GameProcessGuardTests
     public static async Task RunAllAsync()
     {
         await TestVulkanAndDx11BlocksMutationsAsync();
+        TestGameLauncherResolution();
     }
 
     private static async Task TestVulkanAndDx11BlocksMutationsAsync()
@@ -106,5 +107,70 @@ internal static class GameProcessGuardTests
         }
 
         TestAssert.True(threw, "Expected GameRunningException");
+    }
+
+    private static void TestGameLauncherResolution()
+    {
+        using var sandbox = new TempSandbox();
+
+        TestAssert.Equal("bg3_dx11.exe", GameLauncherService.GetExecutableFileName(Bg3LaunchRenderer.DirectX11), "DX11 executable name");
+        TestAssert.Equal("bg3.exe", GameLauncherService.GetExecutableFileName(Bg3LaunchRenderer.Vulkan), "Vulkan executable name");
+
+        // Missing folder when both GameFolder and DataFolder are blank
+        Bg3LaunchResolution unsetRes = GameLauncherService.ResolveExecutable("", "", Bg3LaunchRenderer.DirectX11);
+        TestAssert.False(unsetRes.Success, "Unset folder must fail resolution");
+        TestAssert.Equal("GameFolderNotSet", unsetRes.ErrorCode, "ErrorCode GameFolderNotSet");
+
+        // Fallback to parent of DataFolder when GameFolder is blank
+        string derivedRoot = GameLauncherService.ResolveGameFolder("", sandbox.Settings.DataFolder);
+        TestAssert.Equal(Path.GetFullPath(sandbox.Settings.GameFolder), Path.GetFullPath(derivedRoot), "ResolveGameFolder derives parent of DataFolder");
+
+        // Non-existent GameFolder
+        string missingDir = Path.Combine(sandbox.Root, "NoSuchGameDir");
+        Bg3LaunchResolution missingDirRes = GameLauncherService.ResolveExecutable(missingDir, "", Bg3LaunchRenderer.Vulkan);
+        TestAssert.False(missingDirRes.Success, "Missing folder fails resolution");
+        TestAssert.Equal("GameFolderMissing", missingDirRes.ErrorCode, "ErrorCode GameFolderMissing");
+
+        // Valid GameFolder without executables yet
+        Bg3LaunchResolution missingExeRes = GameLauncherService.ResolveExecutable(sandbox.Settings.GameFolder, sandbox.Settings.DataFolder, Bg3LaunchRenderer.Vulkan);
+        TestAssert.False(missingExeRes.Success, "Missing bg3.exe fails resolution");
+        TestAssert.Equal("ExecutableMissing", missingExeRes.ErrorCode, "ErrorCode ExecutableMissing");
+
+        // Seed both bg3.exe and bg3_dx11.exe under GameFolder/bin/
+        string binDir = Path.Combine(sandbox.Settings.GameFolder, "bin");
+        Directory.CreateDirectory(binDir);
+        string vkExe = Path.Combine(binDir, "bg3.exe");
+        string dxExe = Path.Combine(binDir, "bg3_dx11.exe");
+        File.WriteAllText(vkExe, "VK");
+        File.WriteAllText(dxExe, "DX11");
+
+        Bg3LaunchResolution vkRes = GameLauncherService.ResolveExecutable(sandbox.Settings.GameFolder, sandbox.Settings.DataFolder, Bg3LaunchRenderer.Vulkan);
+        TestAssert.True(vkRes.Success, "Vulkan executable resolves");
+        TestAssert.Equal(vkExe, vkRes.ExecutablePath, "Resolves bg3.exe");
+        TestAssert.Equal(binDir, vkRes.WorkingDirectory, "WorkingDirectory is bin folder");
+
+        Bg3LaunchResolution dxRes = GameLauncherService.ResolveExecutable("", sandbox.Settings.DataFolder, Bg3LaunchRenderer.DirectX11);
+        TestAssert.True(dxRes.Success, "DX11 executable resolves via DataFolder fallback");
+        TestAssert.Equal(dxExe, dxRes.ExecutablePath, "Resolves bg3_dx11.exe");
+
+        // Direct bin-folder configuration fallback
+        Bg3LaunchResolution binAsRootRes = GameLauncherService.ResolveExecutable(binDir, "", Bg3LaunchRenderer.Vulkan);
+        TestAssert.True(binAsRootRes.Success, "Resolves executable when GameFolder points directly at bin/");
+        TestAssert.Equal(vkExe, binAsRootRes.ExecutablePath, "Direct bin path resolves bg3.exe");
+
+        // Settings persistence round-trip & legacy default deserialization
+        var store = new JsonStore(Path.Combine(sandbox.Root, "settings_store"));
+        AppSettings toSave = new()
+        {
+            GameFolder = sandbox.Settings.GameFolder,
+            LaunchRenderer = Bg3LaunchRenderer.Vulkan
+        };
+        store.SaveSettings(toSave);
+        AppSettings loaded = store.LoadSettings();
+        TestAssert.Equal(Bg3LaunchRenderer.Vulkan, loaded.LaunchRenderer, "LaunchRenderer Vulkan persists across Save/Load");
+
+        File.WriteAllText(store.SettingsPath, "{ \"GameFolder\": \"C:\\\\Games\\\\BG3\" }");
+        AppSettings legacyLoaded = store.LoadSettings();
+        TestAssert.Equal(Bg3LaunchRenderer.DirectX11, legacyLoaded.LaunchRenderer, "Legacy settings default LaunchRenderer to DirectX11");
     }
 }

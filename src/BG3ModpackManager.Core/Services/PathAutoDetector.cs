@@ -10,6 +10,7 @@ public static class PathAutoDetector
 {
     public static AppSettings DetectDefaults(AppSettings? existing = null)
     {
+        bool detectLaunchRenderer = existing is null;
         var settings = existing is null
             ? new AppSettings()
             : new AppSettings
@@ -25,7 +26,8 @@ public static class PathAutoDetector
                 LastSelectedOrderJsonPath = existing.LastSelectedOrderJsonPath,
                 LastExportFolder = existing.LastExportFolder,
                 Theme = existing.Theme,
-                LanguageCode = string.IsNullOrWhiteSpace(existing.LanguageCode) ? "en" : existing.LanguageCode.Trim()
+                LanguageCode = string.IsNullOrWhiteSpace(existing.LanguageCode) ? "en" : existing.LanguageCode.Trim(),
+                LaunchRenderer = existing.LaunchRenderer
             };
 
         string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -49,7 +51,7 @@ public static class PathAutoDetector
             }
         }
 
-        TryPopulateFromBg3ModManager(settings, localAppData);
+        TryPopulateFromBg3ModManager(settings, localAppData, detectLaunchRenderer);
 
         if (string.IsNullOrWhiteSpace(settings.DataFolder) && !string.IsNullOrWhiteSpace(settings.GameFolder))
         {
@@ -94,7 +96,7 @@ public static class PathAutoDetector
         return settings;
     }
 
-    private static void TryPopulateFromBg3ModManager(AppSettings settings, string localAppData)
+    private static void TryPopulateFromBg3ModManager(AppSettings settings, string localAppData, bool detectLaunchRenderer)
     {
         foreach (string mmRoot in GetBg3MmCandidates(localAppData))
         {
@@ -120,16 +122,31 @@ public static class PathAutoDetector
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(settings.GameFolder) &&
-                    root.TryGetProperty("GameExecutablePath", out JsonElement exePathEl) &&
+                if (root.TryGetProperty("GameExecutablePath", out JsonElement exePathEl) &&
                     exePathEl.ValueKind == JsonValueKind.String)
                 {
                     string? exe = exePathEl.GetString();
-                    string? binDir = !string.IsNullOrWhiteSpace(exe) ? Path.GetDirectoryName(exe) : null;
-                    string? gameDir = !string.IsNullOrWhiteSpace(binDir) ? Path.GetDirectoryName(binDir) : null;
-                    if (!string.IsNullOrWhiteSpace(gameDir) && Directory.Exists(gameDir))
+                    if (detectLaunchRenderer && !string.IsNullOrWhiteSpace(exe))
                     {
-                        settings.GameFolder = gameDir;
+                        string fileName = Path.GetFileName(exe.Trim());
+                        if (string.Equals(fileName, "bg3.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            settings.LaunchRenderer = Bg3LaunchRenderer.Vulkan;
+                        }
+                        else if (string.Equals(fileName, "bg3_dx11.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            settings.LaunchRenderer = Bg3LaunchRenderer.DirectX11;
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(settings.GameFolder))
+                    {
+                        string? binDir = !string.IsNullOrWhiteSpace(exe) ? Path.GetDirectoryName(exe) : null;
+                        string? gameDir = !string.IsNullOrWhiteSpace(binDir) ? Path.GetDirectoryName(binDir) : null;
+                        if (!string.IsNullOrWhiteSpace(gameDir) && Directory.Exists(gameDir))
+                        {
+                            settings.GameFolder = gameDir;
+                        }
                     }
                 }
 

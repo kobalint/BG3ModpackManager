@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -130,6 +131,7 @@ public partial class MainWindow : Window
             _lastCompactHeight == compactHeight)
         {
             DropHintBorder.Visibility = showDropHint ? Visibility.Visible : Visibility.Collapsed;
+            UpdateQuickActionButtons();
             return;
         }
 
@@ -164,6 +166,27 @@ public partial class MainWindow : Window
             NavItemsPanel.Margin = new Thickness(8, 4, 8, 4);
             SetNavButtonStyle("NavButtonHorizontal");
 
+            NavSpacerRow.Height = new GridLength(0);
+            QuickActionsHeaderText.Visibility = Visibility.Collapsed;
+            QuickActionsBorder.Margin = new Thickness(0);
+            QuickActionsBorder.Padding = new Thickness(10, 6, 10, 6);
+            QuickActionCol0.Width = GridLength.Auto;
+            QuickActionCol1.Width = GridLength.Auto;
+            QuickActionCol2.Width = GridLength.Auto;
+
+            Grid.SetRow(StartBg3Button, 0);
+            Grid.SetColumn(StartBg3Button, 0);
+            StartBg3Button.Margin = new Thickness(0, 0, 6, 0);
+            StartBg3Button.Padding = new Thickness(10, 5, 10, 5);
+
+            Grid.SetRow(OpenModsFolderButton, 0);
+            Grid.SetColumn(OpenModsFolderButton, 1);
+            OpenModsFolderButton.Margin = new Thickness(0, 0, 6, 0);
+
+            Grid.SetRow(OpenGameFolderButton, 0);
+            Grid.SetColumn(OpenGameFolderButton, 2);
+            OpenGameFolderButton.Margin = new Thickness(0);
+
             SidebarFooterBorder.Visibility = Visibility.Collapsed;
             StatusBarStatsText.Visibility = Visibility.Visible;
 
@@ -196,6 +219,27 @@ public partial class MainWindow : Window
             NavItemsPanel.Margin = new Thickness(0, 10, 0, 0);
             SetNavButtonStyle("NavButton");
 
+            NavSpacerRow.Height = new GridLength(1, GridUnitType.Star);
+            QuickActionsHeaderText.Visibility = compactHeight ? Visibility.Collapsed : Visibility.Visible;
+            QuickActionsBorder.Margin = compactHeight ? new Thickness(10, 4, 10, 0) : new Thickness(10, 8, 10, 0);
+            QuickActionsBorder.Padding = compactHeight ? new Thickness(0, 6, 0, 0) : new Thickness(0, 10, 0, 0);
+            QuickActionCol0.Width = new GridLength(1, GridUnitType.Star);
+            QuickActionCol1.Width = new GridLength(0);
+            QuickActionCol2.Width = new GridLength(0);
+
+            Grid.SetRow(StartBg3Button, 0);
+            Grid.SetColumn(StartBg3Button, 0);
+            StartBg3Button.Margin = new Thickness(0, 0, 0, 6);
+            StartBg3Button.Padding = compactHeight ? new Thickness(10, 4, 10, 4) : new Thickness(10, 6, 10, 6);
+
+            Grid.SetRow(OpenModsFolderButton, 1);
+            Grid.SetColumn(OpenModsFolderButton, 0);
+            OpenModsFolderButton.Margin = new Thickness(0, 0, 0, 6);
+
+            Grid.SetRow(OpenGameFolderButton, 2);
+            Grid.SetColumn(OpenGameFolderButton, 0);
+            OpenGameFolderButton.Margin = new Thickness(0);
+
             SidebarFooterBorder.Visibility = Visibility.Visible;
             StatusBarStatsText.Visibility = Visibility.Collapsed;
 
@@ -204,6 +248,8 @@ public partial class MainWindow : Window
             Grid.SetColumn(ViewHost, 1);
             Grid.SetColumnSpan(ViewHost, 1);
         }
+
+        UpdateQuickActionButtons();
     }
 
     private void SetNavButtonStyle(string styleKey)
@@ -314,6 +360,56 @@ public partial class MainWindow : Window
         int unlistedOverrides = _state.LatestAudit?.UnlistedOverrideCount ?? 0;
         NavReviewAlertBadge.Visibility = unlistedOverrides > 0 ? Visibility.Visible : Visibility.Collapsed;
         NavReviewAlertCount.Text = unlistedOverrides.ToString();
+        UpdateQuickActionButtons();
+    }
+
+    private void UpdateQuickActionButtons()
+    {
+        LayoutTier tier = _lastLayoutTier ?? LayoutTier.Wide;
+        Bg3LaunchRenderer renderer = _state.Settings.LaunchRenderer;
+        string rendererLong = Loc.T(renderer == Bg3LaunchRenderer.DirectX11 ? "App.Renderer.DirectX11" : "App.Renderer.Vulkan");
+        string rendererShort = Loc.T(renderer == Bg3LaunchRenderer.DirectX11 ? "App.Renderer.DirectX11Short" : "App.Renderer.VulkanShort");
+
+        if (tier == LayoutTier.Narrow)
+        {
+            StartBg3TitleText.Text = Loc.F("Nav.StartBg3InlineFormat", rendererShort);
+            StartBg3RendererText.Visibility = Visibility.Collapsed;
+            OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolder");
+            OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolder");
+        }
+        else if (tier == LayoutTier.Medium)
+        {
+            StartBg3TitleText.Text = Loc.T("Nav.StartBg3Compact");
+            StartBg3RendererText.Text = rendererLong;
+            StartBg3RendererText.Visibility = Visibility.Visible;
+            OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolderCompact");
+            OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolderCompact");
+        }
+        else
+        {
+            StartBg3TitleText.Text = Loc.T("Nav.StartBg3Full");
+            StartBg3RendererText.Text = rendererLong;
+            StartBg3RendererText.Visibility = Visibility.Visible;
+            OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolder");
+            OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolder");
+        }
+
+        Bg3LaunchResolution resolution = GameLauncherService.ResolveExecutable(_state.Settings);
+        StartBg3Button.ToolTip = resolution.Success
+            ? Loc.F("App.StartBg3.TooltipFormat", rendererLong, resolution.ExecutablePath)
+            : (resolution.ErrorCode == "GameFolderNotSet"
+                ? Loc.T("App.StartBg3.TooltipNotConfigured")
+                : Loc.F("App.StartBg3.TooltipMissingFormat", rendererLong, resolution.ExecutablePath));
+
+        string modsFolder = _state.Settings.ModsFolder.Trim();
+        OpenModsFolderButton.ToolTip = string.IsNullOrWhiteSpace(modsFolder)
+            ? Loc.T("App.OpenModsFolder.TooltipNotSet")
+            : Loc.F("App.OpenModsFolder.TooltipFormat", modsFolder);
+
+        string gameFolder = GameLauncherService.ResolveGameFolder(_state.Settings);
+        OpenGameFolderButton.ToolTip = string.IsNullOrWhiteSpace(gameFolder)
+            ? Loc.T("App.OpenGameFolder.TooltipNotSet")
+            : Loc.F("App.OpenGameFolder.TooltipFormat", gameFolder);
     }
 
     private void OnNavChecked(object sender, RoutedEventArgs e)
@@ -355,6 +451,77 @@ public partial class MainWindow : Window
     private async void OnRefreshClick(object sender, RoutedEventArgs e)
     {
         await RunInitialScanAsync();
+    }
+
+    private void OnStartBg3Click(object sender, RoutedEventArgs e)
+    {
+        IReadOnlyList<RunningGameProcess> running = GameProcessGuard.GetRunningGameProcesses();
+        if (running.Count > 0)
+        {
+            string labels = string.Join(", ", running.Select(p => p.VariantLabel).Distinct(StringComparer.OrdinalIgnoreCase));
+            MessageBox.Show(
+                this,
+                Loc.F("App.StartBg3.AlreadyRunningMsg", labels),
+                Loc.T("App.StartBg3.AlreadyRunningTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        Bg3LaunchResolution resolution = GameLauncherService.ResolveExecutable(_state.Settings);
+        if (!resolution.Success)
+        {
+            string msg = resolution.ErrorCode is "GameFolderNotSet" or "GameFolderMissing"
+                ? Loc.T("App.StartBg3.MissingFolderMsg")
+                : Loc.F("App.StartBg3.MissingExeMsg", resolution.ExecutableFileName, resolution.ExecutablePath);
+            MessageBox.Show(
+                this,
+                msg,
+                Loc.T("App.StartBg3.ErrorTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            GameLauncherService.LaunchGame(resolution);
+            string rendererLong = Loc.T(resolution.Renderer == Bg3LaunchRenderer.DirectX11 ? "App.Renderer.DirectX11" : "App.Renderer.Vulkan");
+            _state.Log(Loc.F("App.StartBg3.Log", rendererLong, resolution.ExecutablePath));
+            UpdateGameRunningIndicator();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                Loc.F("App.StartBg3.LaunchErrorMsg", resolution.ExecutablePath, ex.Message),
+                Loc.T("App.StartBg3.ErrorTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void OnOpenModsFolderClick(object sender, RoutedEventArgs e)
+        => OpenConfiguredFolder(_state.Settings.ModsFolder);
+
+    private void OnOpenGameFolderClick(object sender, RoutedEventArgs e)
+        => OpenConfiguredFolder(GameLauncherService.ResolveGameFolder(_state.Settings));
+
+    private void OpenConfiguredFolder(string? path)
+    {
+        string trimmed = (path ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || !Directory.Exists(trimmed))
+        {
+            MessageBox.Show(
+                this,
+                Loc.F("App.OpenFolder.MissingMsg", string.IsNullOrWhiteSpace(trimmed) ? Loc.T("Common.None") : trimmed),
+                Loc.T("Settings.OpenFolderTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo("explorer.exe", trimmed) { UseShellExecute = true });
     }
 
     private void OnToggleActivityLogClick(object sender, RoutedEventArgs e)

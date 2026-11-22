@@ -67,9 +67,38 @@ public partial class SettingsView : UserControl
         FullProfileModeRadio.IsChecked = s.SwitchMode == SwitchMode.FullProfile;
         OverridesOnlyModeRadio.IsChecked = s.SwitchMode == SwitchMode.OverridesAndDataOnly;
         SyncLsxCheckBox.IsChecked = s.SyncModSettingsLsxOnSwitch;
+        LaunchVulkanRadio.IsChecked = s.LaunchRenderer == Bg3LaunchRenderer.Vulkan;
+        LaunchDx11Radio.IsChecked = s.LaunchRenderer == Bg3LaunchRenderer.DirectX11;
         _loading = false;
 
         UpdateStatusIndicators();
+    }
+
+    private void OnLaunchRendererRadioChecked(object sender, RoutedEventArgs e)
+    {
+        if (_loading || !IsLoaded)
+        {
+            return;
+        }
+
+        Bg3LaunchRenderer selected = LaunchVulkanRadio.IsChecked == true
+            ? Bg3LaunchRenderer.Vulkan
+            : Bg3LaunchRenderer.DirectX11;
+
+        if (_state.Settings.LaunchRenderer == selected)
+        {
+            UpdateStatusIndicators();
+            return;
+        }
+
+        _state.Settings.LaunchRenderer = selected;
+        _state.Store.SaveSettings(_state.Settings);
+        string apiLabel = selected == Bg3LaunchRenderer.Vulkan
+            ? Loc.T("Settings.Launch.Vulkan")
+            : Loc.T("Settings.Launch.DirectX11");
+        _state.Log(Loc.F("Settings.LaunchRendererLog", apiLabel));
+        UpdateStatusIndicators();
+        _state.NotifyStateChanged();
     }
 
     private void OnThemeRadioChecked(object sender, RoutedEventArgs e)
@@ -188,6 +217,30 @@ public partial class SettingsView : UserControl
         {
             VaultVolumeHint.Text = string.Empty;
         }
+
+        Bg3LaunchRenderer selectedRenderer = LaunchVulkanRadio.IsChecked == true
+            ? Bg3LaunchRenderer.Vulkan
+            : Bg3LaunchRenderer.DirectX11;
+        Bg3LaunchResolution exeRes = GameLauncherService.ResolveExecutable(
+            GameFolderBox.Text.Trim(),
+            DataFolderBox.Text.Trim(),
+            selectedRenderer);
+
+        if (exeRes.ErrorCode == "GameFolderNotSet")
+        {
+            LaunchExeStatusText.Text = Loc.T("Settings.LaunchExeNoFolder");
+            LaunchExeStatusText.Foreground = ThemeManager.GetBrush("BrushTextMuted");
+        }
+        else if (exeRes.Success)
+        {
+            LaunchExeStatusText.Text = Loc.F("Settings.LaunchExeFoundFormat", exeRes.ExecutablePath);
+            LaunchExeStatusText.Foreground = ThemeManager.GetBrush("BrushGreen");
+        }
+        else
+        {
+            LaunchExeStatusText.Text = Loc.F("Settings.LaunchExeMissingFormat", exeRes.ExecutableFileName, exeRes.ExecutablePath);
+            LaunchExeStatusText.Foreground = ThemeManager.GetBrush("BrushAmber");
+        }
     }
 
     private static void SetDirIndicator(TextBlock label, string path, bool createHint = false)
@@ -272,7 +325,8 @@ public partial class SettingsView : UserControl
             LastSelectedOrderJsonPath = _state.Settings.LastSelectedOrderJsonPath,
             LastExportFolder = _state.Settings.LastExportFolder,
             Theme = LightThemeRadio.IsChecked == true ? AppTheme.Light : AppTheme.Dark,
-            LanguageCode = _state.Settings.LanguageCode
+            LanguageCode = _state.Settings.LanguageCode,
+            LaunchRenderer = LaunchVulkanRadio.IsChecked == true ? Bg3LaunchRenderer.Vulkan : Bg3LaunchRenderer.DirectX11
         });
         LoadFromSettings(detected);
         _state.Log(Loc.T("Settings.AutoDetectedLog"));
@@ -302,6 +356,9 @@ public partial class SettingsView : UserControl
             ? SwitchMode.OverridesAndDataOnly
             : SwitchMode.FullProfile;
         _state.Settings.SyncModSettingsLsxOnSwitch = SyncLsxCheckBox.IsChecked == true;
+        _state.Settings.LaunchRenderer = LaunchVulkanRadio.IsChecked == true
+            ? Bg3LaunchRenderer.Vulkan
+            : Bg3LaunchRenderer.DirectX11;
 
         if (!string.IsNullOrWhiteSpace(_state.Settings.VaultFolder))
         {

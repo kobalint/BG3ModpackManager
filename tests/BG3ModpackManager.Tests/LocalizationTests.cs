@@ -155,13 +155,15 @@ internal static partial class LocalizationTests
             VaultFolder = sandbox.Settings.VaultFolder,
             LastExportFolder = customExport,
             Theme = AppTheme.Light,
-            LanguageCode = "hu"
+            LanguageCode = "hu",
+            LaunchRenderer = Bg3LaunchRenderer.Vulkan
         };
 
         AppSettings preserved = PathAutoDetector.DetectDefaults(existing);
         TestAssert.Equal("hu", preserved.LanguageCode, "LanguageCode 'hu' must survive PathAutoDetector.DetectDefaults");
         TestAssert.Equal(AppTheme.Light, preserved.Theme, "AppTheme.Light must survive PathAutoDetector.DetectDefaults");
         TestAssert.Equal(customExport, preserved.LastExportFolder, "LastExportFolder must survive PathAutoDetector.DetectDefaults");
+        TestAssert.Equal(Bg3LaunchRenderer.Vulkan, preserved.LaunchRenderer, "LaunchRenderer must survive PathAutoDetector.DetectDefaults");
 
         existing.LanguageCode = "   ";
         AppSettings blankFallback = PathAutoDetector.DetectDefaults(existing);
