@@ -36,7 +36,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Left: Branding, Active Profile Pill & BG3 Running Guard Pill -->
-                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True" Margin="0,0,12,0">
                     <Image Source="pack://application:,,,/Assets/app_icon.png"
                            Width="32"
                            Height="32"

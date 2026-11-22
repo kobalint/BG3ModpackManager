@@ -117,13 +117,19 @@ public partial class MainWindow : Window
         LayoutTier tier = width >= 1160
             ? LayoutTier.Wide
             : (width >= 900 ? LayoutTier.Medium : LayoutTier.Narrow);
-        bool showSubtitle = width >= 1040;
+        bool showDropHint = width >= 1380;
+        bool showSubtitle = width >= 1060;
         bool compactHeight = height < 640;
+
+        ActiveProfilePillText.MaxWidth = tier == LayoutTier.Narrow
+            ? 240
+            : Math.Clamp(width - (showDropHint ? 1040 : 760), 140, 320);
 
         if (_lastLayoutTier == tier &&
             _lastShowSubtitle == showSubtitle &&
             _lastCompactHeight == compactHeight)
         {
+            DropHintBorder.Visibility = showDropHint ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
 
@@ -146,7 +152,6 @@ public partial class MainWindow : Window
             DropHintBorder.Visibility = Visibility.Collapsed;
             QuickSwitchLabel.Visibility = Visibility.Visible;
             QuickProfileCombo.Width = 180;
-            ActiveProfilePillText.MaxWidth = 220;
 
             NavColumn.Width = new GridLength(0);
             Grid.SetRow(NavBorder, 0);
@@ -176,10 +181,9 @@ public partial class MainWindow : Window
             HeaderControlsPanel.Margin = new Thickness(0);
 
             bool isWide = tier == LayoutTier.Wide;
-            DropHintBorder.Visibility = isWide ? Visibility.Visible : Visibility.Collapsed;
+            DropHintBorder.Visibility = showDropHint ? Visibility.Visible : Visibility.Collapsed;
             QuickSwitchLabel.Visibility = isWide ? Visibility.Visible : Visibility.Collapsed;
-            QuickProfileCombo.Width = isWide ? 200 : 165;
-            ActiveProfilePillText.MaxWidth = isWide ? 260 : 190;
+            QuickProfileCombo.Width = isWide ? 190 : 165;
 
             NavColumn.Width = new GridLength(isWide ? 220 : 180);
             Grid.SetRow(NavBorder, 0);

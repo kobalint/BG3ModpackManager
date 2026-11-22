@@ -93,8 +93,8 @@ public partial class ProfilesView : UserControl
             return;
         }
 
-        bool stacked = width < 780;
-        bool compactHeader = (!stacked && width < 960) || width < 640;
+        bool stacked = width < 820;
+        bool compactHeader = (!stacked && width < 980) || width < 660;
 
         if (_lastStackedMode != stacked)
         {
@@ -106,7 +106,8 @@ public partial class ProfilesView : UserControl
                     _savedLeftPaneWidth = Math.Clamp(LeftPaneColumn.Width.Value, 240, 400);
                 }
 
-                ProfilesListBox.MaxHeight = 130;
+                ProfilesSubtitleText.Visibility = Visibility.Collapsed;
+                ProfilesListBox.MaxHeight = 88;
                 ProfileActionsGrid.Columns = 4;
                 ProfilesSplitter.Visibility = Visibility.Collapsed;
                 LeftPaneColumn.MinWidth = 0;
@@ -117,7 +118,8 @@ public partial class ProfilesView : UserControl
                 Grid.SetRowSpan(ProfilesListCard, 1);
                 Grid.SetColumn(ProfilesListCard, 0);
                 Grid.SetColumnSpan(ProfilesListCard, 3);
-                ProfilesListCard.Margin = new Thickness(0, 0, 0, 10);
+                ProfilesListCard.Padding = new Thickness(10, 8, 10, 8);
+                ProfilesListCard.Margin = new Thickness(0, 0, 0, 8);
 
                 Grid.SetRow(ProfileDetailsGrid, 2);
                 Grid.SetRowSpan(ProfileDetailsGrid, 1);
@@ -126,6 +128,7 @@ public partial class ProfilesView : UserControl
             }
             else
             {
+                ProfilesSubtitleText.Visibility = Visibility.Visible;
                 ProfilesListBox.ClearValue(MaxHeightProperty);
                 ProfileActionsGrid.Columns = 2;
                 ProfilesSplitter.Visibility = Visibility.Visible;
@@ -137,6 +140,7 @@ public partial class ProfilesView : UserControl
                 Grid.SetRowSpan(ProfilesListCard, 3);
                 Grid.SetColumn(ProfilesListCard, 0);
                 Grid.SetColumnSpan(ProfilesListCard, 1);
+                ProfilesListCard.Padding = new Thickness(12);
                 ProfilesListCard.Margin = new Thickness(0);
 
                 Grid.SetRow(ProfileDetailsGrid, 0);
