@@ -167,6 +167,7 @@ public static class ModLibraryService
             }
         }
 
+        ReconcileActiveProfileId(settings, db);
         return changed;
     }
 
@@ -899,12 +900,43 @@ public static class ModLibraryService
         };
 
         db.Profiles.Add(profile);
+        db.ActiveProfileId = profile.Id;
+
+        if (!string.IsNullOrWhiteSpace(settings.LastSelectedOrderJsonPath) &&
+            File.Exists(settings.LastSelectedOrderJsonPath) &&
+            !HasExplicitCompanionLinkForJson(db, settings.LastSelectedOrderJsonPath))
+        {
+            try
+            {
+                Bg3LoadOrderFile lastOrder = Bg3LoadOrderService.LoadOrderJson(settings.LastSelectedOrderJsonPath);
+                var jsonUuids = lastOrder.Order
+                    .Select(e => e.Uuid)
+                    .Where(u => !string.IsNullOrWhiteSpace(u))
+                    .ToList();
+                var capturedUuids = orderedIds
+                    .Select(id => db.Mods.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase)))
+                    .Where(m => m is not null && !IsJsonCompanionMod(m) && !string.IsNullOrWhiteSpace(m.Uuid))
+                    .Select(m => m!.Uuid!)
+                    .ToList();
+
+                if (jsonUuids.Count > 0 && jsonUuids.SequenceEqual(capturedUuids, StringComparer.OrdinalIgnoreCase))
+                {
+                    LinkCompanionModsToOrderJson(db, settings.LastSelectedOrderJsonPath, profile.ModIds);
+                }
+            }
+            catch
+            {
+                // Ignore invalid last selected JSON while capturing active profile.
+            }
+        }
+
         return profile;
     }
 
     /// <summary>
     /// Creates a new profile or updates an existing linked profile from a BG3ModManager JSON load order,
-    /// disambiguating variants that share a UUID by matching JSON Name first.
+    /// disambiguating variants that share a UUID by matching JSON Name first, while preserving and linking
+    /// companion loose file mods and standalone overrides that BG3ModManager omits from its JSON.
     /// </summary>
     public static async Task<(ModProfile Profile, List<string> MissingJsonEntries)> CreateOrUpdateProfileFromJsonAsync(
         string jsonPath,
@@ -945,12 +977,63 @@ public static class ModLibraryService
             }
         }
 
-        if (includeActiveStandaloneOverrides)
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+        List<string> linkedCompanions = GetLinkedCompanionModIdsForOrderJson(db, jsonPath, existingProfile);
+        bool hadExplicitJsonLink = HasExplicitCompanionLinkForJson(db, jsonPath);
+
+        if (existingProfile is not null)
         {
-            foreach (ModEntry mod in db.Mods.Where(m =>
-                         m.Location == ModLocation.Active &&
-                         m.EffectiveOverrideKind == OverrideKind.StandaloneOverride &&
-                         m.Kind is ModKind.Pak or ModKind.Hybrid))
+            // Syncing an existing profile from its linked BG3MM JSON: always keep companion loose mods & standalone overrides.
+            foreach (string companionId in linkedCompanions)
+            {
+                if (seenIds.Add(companionId))
+                {
+                    resolvedIds.Add(companionId);
+                }
+            }
+        }
+        else
+        {
+            // Importing/creating a new profile from a BG3MM JSON: include linked companion mods respecting the dialog options.
+            foreach (string companionId in linkedCompanions)
+            {
+                if (!modById.TryGetValue(companionId, out ModEntry? compMod))
+                {
+                    continue;
+                }
+
+                bool isLoose = compMod.Kind is ModKind.LooseData or ModKind.LooseGame || compMod.TrackedFiles.Count > 0;
+                if (isLoose && !includeActiveLooseMods)
+                {
+                    continue;
+                }
+
+                if (!isLoose && !includeActiveStandaloneOverrides)
+                {
+                    continue;
+                }
+
+                if (seenIds.Add(compMod.Id))
+                {
+                    resolvedIds.Add(compMod.Id);
+                }
+            }
+        }
+
+        bool autoRecoverActiveCompanions =
+            existingProfile is not null &&
+            !hadExplicitJsonLink &&
+            linkedCompanions.Count == 0 &&
+            DoesPakListMatchActiveDiskOrder(resolvedIds, settings, db);
+
+        if (includeActiveStandaloneOverrides || autoRecoverActiveCompanions)
+        {
+            foreach (ModEntry mod in db.Mods
+                         .Where(m =>
+                             m.Location == ModLocation.Active &&
+                             m.EffectiveOverrideKind == OverrideKind.StandaloneOverride &&
+                             m.Kind is ModKind.Pak or ModKind.Hybrid)
+                         .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase))
             {
                 if (seenIds.Add(mod.Id))
                 {
@@ -959,11 +1042,13 @@ public static class ModLibraryService
             }
         }
 
-        if (includeActiveLooseMods)
+        if (includeActiveLooseMods || autoRecoverActiveCompanions)
         {
-            foreach (ModEntry mod in db.Mods.Where(m =>
-                         m.Location == ModLocation.Active &&
-                         m.Kind is ModKind.LooseData or ModKind.LooseGame))
+            foreach (ModEntry mod in db.Mods
+                         .Where(m =>
+                             m.Location == ModLocation.Active &&
+                             m.Kind is ModKind.LooseData or ModKind.LooseGame)
+                         .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase))
             {
                 if (seenIds.Add(mod.Id))
                 {
@@ -994,7 +1079,438 @@ public static class ModLibraryService
             db.Profiles.Add(profile);
         }
 
+        LinkCompanionModsToOrderJson(db, jsonPath, resolvedIds);
+        ReconcileActiveProfileId(settings, db, preferredProfileId: profile.Id);
+
         return (profile, missing);
+    }
+
+    /// <summary>
+    /// Returns true if a mod is omitted from BG3ModManager's exported .json load order array
+    /// (LooseData, LooseGame, StandaloneOverride PAKs, or PAKs lacking meta.lsx / UUID).
+    /// </summary>
+    public static bool IsJsonCompanionMod(ModEntry mod)
+        => mod.Kind is ModKind.LooseData or ModKind.LooseGame ||
+           mod.EffectiveOverrideKind == OverrideKind.StandaloneOverride ||
+           !mod.HasMetaLsx ||
+           string.IsNullOrWhiteSpace(mod.Uuid);
+
+    public static bool HasExplicitCompanionLinkForJson(LibraryDatabase db, string? jsonPath)
+    {
+        if (string.IsNullOrWhiteSpace(jsonPath) || db.JsonOrderCompanionModIds is null)
+        {
+            return false;
+        }
+
+        (string fullKey, string fileKey) = GetOrderJsonKeys(jsonPath);
+        return (!string.IsNullOrEmpty(fullKey) && db.JsonOrderCompanionModIds.ContainsKey(fullKey)) ||
+               (!string.IsNullOrEmpty(fileKey) && db.JsonOrderCompanionModIds.ContainsKey(fileKey));
+    }
+
+    /// <summary>
+    /// Persistently associates all companion mods (loose file mods and standalone overrides) in
+    /// <paramref name="profileModIds"/> with the specified BG3ModManager load order .json file.
+    /// </summary>
+    public static void LinkCompanionModsToOrderJson(
+        LibraryDatabase db,
+        string? jsonPath,
+        IEnumerable<string> profileModIds)
+    {
+        if (string.IsNullOrWhiteSpace(jsonPath))
+        {
+            return;
+        }
+
+        db.JsonOrderCompanionModIds ??= new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+
+        var companionIds = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string id in profileModIds)
+        {
+            if (modById.TryGetValue(id, out ModEntry? mod) && IsJsonCompanionMod(mod) && seen.Add(mod.Id))
+            {
+                companionIds.Add(mod.Id);
+            }
+        }
+
+        (string fullKey, string fileKey) = GetOrderJsonKeys(jsonPath);
+        if (!string.IsNullOrEmpty(fullKey))
+        {
+            db.JsonOrderCompanionModIds[fullKey] = new List<string>(companionIds);
+        }
+
+        if (!string.IsNullOrEmpty(fileKey))
+        {
+            db.JsonOrderCompanionModIds[fileKey] = new List<string>(companionIds);
+        }
+    }
+
+    /// <summary>
+    /// Retrieves companion mod IDs (loose file mods and standalone overrides) linked to <paramref name="jsonPath"/>
+    /// or already present on <paramref name="existingProfile"/>.
+    /// </summary>
+    public static List<string> GetLinkedCompanionModIdsForOrderJson(
+        LibraryDatabase db,
+        string? jsonPath,
+        ModProfile? existingProfile = null)
+    {
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void TryAddCompanion(string id)
+        {
+            if (modById.TryGetValue(id, out ModEntry? mod) && IsJsonCompanionMod(mod) && seen.Add(mod.Id))
+            {
+                result.Add(mod.Id);
+            }
+        }
+
+        bool hasExplicitLink = HasExplicitCompanionLinkForJson(db, jsonPath);
+        if (hasExplicitLink && db.JsonOrderCompanionModIds is not null && !string.IsNullOrWhiteSpace(jsonPath))
+        {
+            (string fullKey, string fileKey) = GetOrderJsonKeys(jsonPath);
+            if (!string.IsNullOrEmpty(fullKey) &&
+                db.JsonOrderCompanionModIds.TryGetValue(fullKey, out List<string>? byFull) &&
+                byFull is not null)
+            {
+                foreach (string id in byFull)
+                {
+                    TryAddCompanion(id);
+                }
+            }
+            else if (!string.IsNullOrEmpty(fileKey) &&
+                     db.JsonOrderCompanionModIds.TryGetValue(fileKey, out List<string>? byFile) &&
+                     byFile is not null)
+            {
+                foreach (string id in byFile)
+                {
+                    TryAddCompanion(id);
+                }
+            }
+        }
+
+        if (existingProfile is not null)
+        {
+            foreach (string id in existingProfile.ModIds)
+            {
+                TryAddCompanion(id);
+            }
+        }
+
+        if (!hasExplicitLink && !string.IsNullOrWhiteSpace(jsonPath))
+        {
+            (string fullKey, string fileKey) = GetOrderJsonKeys(jsonPath);
+            foreach (ModProfile other in db.Profiles)
+            {
+                if (string.IsNullOrWhiteSpace(other.LinkedOrderJsonPath))
+                {
+                    continue;
+                }
+
+                (string otherFull, string otherFile) = GetOrderJsonKeys(other.LinkedOrderJsonPath);
+                if ((!string.IsNullOrEmpty(fullKey) && string.Equals(fullKey, otherFull, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(fileKey) && string.Equals(fileKey, otherFile, StringComparison.OrdinalIgnoreCase)))
+                {
+                    foreach (string id in other.ModIds)
+                    {
+                        TryAddCompanion(id);
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public static bool DoesPakListMatchActiveDiskOrder(
+        IReadOnlyList<string> candidateModIds,
+        AppSettings settings,
+        LibraryDatabase db)
+    {
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+        var profileOrderablePaks = new List<ModEntry>();
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string id in candidateModIds)
+        {
+            if (!seenIds.Add(id))
+            {
+                continue;
+            }
+
+            if (!modById.TryGetValue(id, out ModEntry? mod))
+            {
+                return false;
+            }
+
+            if (!IsJsonCompanionMod(mod))
+            {
+                if (mod.Location != ModLocation.Active)
+                {
+                    return false;
+                }
+
+                profileOrderablePaks.Add(mod);
+            }
+        }
+
+        var activeOrderablePaksOnDisk = db.Mods
+            .Where(m => m.Location == ModLocation.Active && !IsJsonCompanionMod(m))
+            .ToList();
+
+        if (profileOrderablePaks.Count == 0)
+        {
+            return activeOrderablePaksOnDisk.Count == 0;
+        }
+
+        // Check 1: Exact set match with all active orderable PAKs currently in Mods/
+        var profilePakIdSet = new HashSet<string>(profileOrderablePaks.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
+        if (profilePakIdSet.Count == activeOrderablePaksOnDisk.Count &&
+            activeOrderablePaksOnDisk.All(m => profilePakIdSet.Contains(m.Id)))
+        {
+            return true;
+        }
+
+        // Check 2: Match against modsettings.lsx active load order UUID sequence (supports OverridesAndCollisionsOnly mode)
+        if (!string.IsNullOrWhiteSpace(settings.ModSettingsLsxPath) && File.Exists(settings.ModSettingsLsxPath))
+        {
+            try
+            {
+                List<ModSettingsEntry> lsx = Bg3LoadOrderService.ReadModSettingsLsx(settings.ModSettingsLsxPath);
+                var activeByUuid = activeOrderablePaksOnDisk
+                    .Where(m => !string.IsNullOrWhiteSpace(m.Uuid))
+                    .GroupBy(m => m.Uuid!, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+                var lsxResolvedIds = new List<string>();
+                var lsxSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (ModSettingsEntry lsxEntry in lsx)
+                {
+                    if (!activeByUuid.TryGetValue(lsxEntry.Uuid, out List<ModEntry>? candidates) || candidates.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    ModEntry chosen = candidates.FirstOrDefault(m =>
+                        string.Equals(m.DisplayName, lsxEntry.Name, StringComparison.OrdinalIgnoreCase)) ?? candidates[0];
+
+                    if (lsxSeen.Add(chosen.Id))
+                    {
+                        lsxResolvedIds.Add(chosen.Id);
+                    }
+                }
+
+                var profileIds = profileOrderablePaks.Select(m => m.Id).ToList();
+                if (lsxResolvedIds.Count > 0 &&
+                    lsxResolvedIds.Count == profileIds.Count &&
+                    lsxResolvedIds.SequenceEqual(profileIds, StringComparer.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Ignore unreadable modsettings.lsx during active profile matching.
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Auto-heals linked JSON profiles that were missing companion loose/standalone mods prior to companion linking,
+    /// and reconciles <see cref="LibraryDatabase.ActiveProfileId"/> against the currently active mods on disk.
+    /// </summary>
+    public static void ReconcileActiveProfileId(
+        AppSettings settings,
+        LibraryDatabase db,
+        string? preferredProfileId = null)
+    {
+        if (db.Profiles.Count == 0)
+        {
+            db.ActiveProfileId = null;
+            return;
+        }
+
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+        var activeCompanionsOnDisk = db.Mods
+            .Where(m => m.Location == ModLocation.Active && IsJsonCompanionMod(m))
+            .OrderBy(m => m.Kind is ModKind.LooseData or ModKind.LooseGame ? 1 : 0)
+            .ThenBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Step 1: Ensure every profile with a LinkedOrderJsonPath has its companion link initialized or synchronized.
+        ModProfile? lastAutoHealedProfile = null;
+        foreach (ModProfile p in db.Profiles)
+        {
+            if (string.IsNullOrWhiteSpace(p.LinkedOrderJsonPath))
+            {
+                continue;
+            }
+
+            bool hasCompanionsInProfile = p.ModIds.Any(id => modById.TryGetValue(id, out ModEntry? m) && IsJsonCompanionMod(m));
+            bool hasExplicitLink = HasExplicitCompanionLinkForJson(db, p.LinkedOrderJsonPath);
+
+            if (!hasCompanionsInProfile && !hasExplicitLink)
+            {
+                // Profile was linked/synced before companion linking existed and has 0 companion mods:
+                // if its PAKs match active disk order (or another profile with the exact same PAK sequence), recover them.
+                if (activeCompanionsOnDisk.Count > 0 && DoesPakListMatchActiveDiskOrder(p.ModIds, settings, db))
+                {
+                    var existingSet = new HashSet<string>(p.ModIds, StringComparer.OrdinalIgnoreCase);
+                    foreach (ModEntry comp in activeCompanionsOnDisk)
+                    {
+                        if (existingSet.Add(comp.Id))
+                        {
+                            p.ModIds.Add(comp.Id);
+                        }
+                    }
+
+                    LinkCompanionModsToOrderJson(db, p.LinkedOrderJsonPath, p.ModIds);
+                    lastAutoHealedProfile = p;
+                }
+                else
+                {
+                    List<string> pPakIds = p.ModIds
+                        .Where(id => modById.TryGetValue(id, out ModEntry? m) && !IsJsonCompanionMod(m))
+                        .ToList();
+
+                    if (pPakIds.Count > 0)
+                    {
+                        ModProfile? donor = db.Profiles.FirstOrDefault(other =>
+                            other.Id != p.Id &&
+                            other.ModIds.Any(id => modById.TryGetValue(id, out ModEntry? m) && IsJsonCompanionMod(m)) &&
+                            other.ModIds
+                                .Where(id => modById.TryGetValue(id, out ModEntry? m) && !IsJsonCompanionMod(m))
+                                .SequenceEqual(pPakIds, StringComparer.OrdinalIgnoreCase));
+
+                        if (donor is not null)
+                        {
+                            var existingSet = new HashSet<string>(p.ModIds, StringComparer.OrdinalIgnoreCase);
+                            foreach (string id in donor.ModIds)
+                            {
+                                if (modById.TryGetValue(id, out ModEntry? m) && IsJsonCompanionMod(m) && existingSet.Add(m.Id))
+                                {
+                                    p.ModIds.Add(m.Id);
+                                }
+                            }
+
+                            LinkCompanionModsToOrderJson(db, p.LinkedOrderJsonPath, p.ModIds);
+                            lastAutoHealedProfile = p;
+                        }
+                    }
+                }
+            }
+            else if (hasCompanionsInProfile && !hasExplicitLink)
+            {
+                LinkCompanionModsToOrderJson(db, p.LinkedOrderJsonPath, p.ModIds);
+            }
+        }
+
+        // Step 2: Evaluate which profiles match the active disk setup.
+        var activeCompanionIdSet = new HashSet<string>(activeCompanionsOnDisk.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
+
+        bool IsFullDiskMatch(ModProfile p)
+        {
+            if (p.ModIds.Count == 0)
+            {
+                return db.Mods.All(m => m.Location != ModLocation.Active);
+            }
+
+            if (!DoesPakListMatchActiveDiskOrder(p.ModIds, settings, db))
+            {
+                return false;
+            }
+
+            var profileCompanionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string id in p.ModIds)
+            {
+                if (!modById.TryGetValue(id, out ModEntry? mod))
+                {
+                    return false;
+                }
+
+                if (mod.Location != ModLocation.Active)
+                {
+                    return false;
+                }
+
+                if (IsJsonCompanionMod(mod))
+                {
+                    profileCompanionIds.Add(mod.Id);
+                }
+            }
+
+            return profileCompanionIds.SetEquals(activeCompanionIdSet);
+        }
+
+        // If a specific preferredProfileId was just synced/linked/imported and matches active disk state, mark it active.
+        if (!string.IsNullOrWhiteSpace(preferredProfileId))
+        {
+            ModProfile? preferred = db.Profiles.FirstOrDefault(p => string.Equals(p.Id, preferredProfileId, StringComparison.OrdinalIgnoreCase));
+            if (preferred is not null && IsFullDiskMatch(preferred))
+            {
+                db.ActiveProfileId = preferred.Id;
+                return;
+            }
+        }
+
+        if (lastAutoHealedProfile is not null && IsFullDiskMatch(lastAutoHealedProfile))
+        {
+            ModProfile? cur = db.Profiles.FirstOrDefault(p => string.Equals(p.Id, db.ActiveProfileId, StringComparison.OrdinalIgnoreCase));
+            if (cur is null || !IsFullDiskMatch(cur) || lastAutoHealedProfile.UpdatedAtUtc >= cur.UpdatedAtUtc)
+            {
+                db.ActiveProfileId = lastAutoHealedProfile.Id;
+                return;
+            }
+        }
+
+        // If current ActiveProfileId still exists and matches the active disk state, keep it.
+        if (!string.IsNullOrWhiteSpace(db.ActiveProfileId))
+        {
+            ModProfile? currentActive = db.Profiles.FirstOrDefault(p => string.Equals(p.Id, db.ActiveProfileId, StringComparison.OrdinalIgnoreCase));
+            if (currentActive is not null && IsFullDiskMatch(currentActive))
+            {
+                return;
+            }
+        }
+
+        // Otherwise, if any profile matches the active disk state (preferring JSON-linked profiles, then most recently updated), select it.
+        ModProfile? bestMatch = db.Profiles
+            .Where(IsFullDiskMatch)
+            .OrderByDescending(p => !string.IsNullOrWhiteSpace(p.LinkedOrderJsonPath))
+            .ThenByDescending(p => p.UpdatedAtUtc)
+            .FirstOrDefault();
+
+        if (bestMatch is not null)
+        {
+            db.ActiveProfileId = bestMatch.Id;
+        }
+    }
+
+    private static (string FullPathKey, string FileNameKey) GetOrderJsonKeys(string? jsonPath)
+    {
+        if (string.IsNullOrWhiteSpace(jsonPath))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        string trimmed = jsonPath.Trim();
+        string fullKey;
+        try
+        {
+            fullKey = Path.GetFullPath(trimmed).Replace('/', '\\');
+        }
+        catch
+        {
+            fullKey = trimmed.Replace('/', '\\');
+        }
+
+        string fileName = Path.GetFileName(trimmed);
+        string fileKey = string.IsNullOrWhiteSpace(fileName) ? string.Empty : $"file:{fileName}";
+        return (fullKey, fileKey);
     }
 
     private static ModEntry ChooseProfileCandidate(Bg3OrderEntry entry, List<ModEntry> candidates)

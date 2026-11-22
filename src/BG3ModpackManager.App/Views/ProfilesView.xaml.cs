@@ -704,8 +704,20 @@ public partial class ProfilesView : UserControl
 
         if (dlg.ShowDialog(Window.GetWindow(this)) == true)
         {
+            List<string> existingLinkedCompanions = ModLibraryService.GetLinkedCompanionModIdsForOrderJson(_state.Db, dlg.FileName, profile);
+            var seen = new HashSet<string>(profile.ModIds, StringComparer.OrdinalIgnoreCase);
+            foreach (string companionId in existingLinkedCompanions)
+            {
+                if (seen.Add(companionId))
+                {
+                    profile.ModIds.Add(companionId);
+                }
+            }
+
             profile.LinkedOrderJsonPath = dlg.FileName;
             profile.UpdatedAtUtc = DateTime.UtcNow;
+            ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
+            ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
             _state.SaveLibraryAndCache();
             _state.Log(Loc.F("Profiles.LinkJson.Log", profile.Name, Path.GetFileName(dlg.FileName)));
             _state.NotifyStateChanged();
@@ -781,6 +793,8 @@ public partial class ProfilesView : UserControl
             .ToList();
 
         Bg3LoadOrderService.SaveOrderJson(dlg.FileName, entries);
+        ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, dlg.FileName, profile.ModIds);
+        _state.SaveLibraryAndCache();
         _state.Log(Loc.F("Profiles.ExportJson.Log", profile.Name, entries.Count, dlg.FileName));
         MessageBox.Show(
             Window.GetWindow(this),
@@ -1010,6 +1024,12 @@ public partial class ProfilesView : UserControl
 
         profile.ModIds.AddRange(dlg.SelectedModIds);
         profile.UpdatedAtUtc = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        {
+            ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
+        }
+
+        ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
         _state.SaveLibraryAndCache();
         _state.Log(Loc.F("Profiles.AddMods.Log", dlg.SelectedModIds.Count, profile.Name));
         _state.NotifyStateChanged();
@@ -1025,6 +1045,12 @@ public partial class ProfilesView : UserControl
 
         profile.ModIds.RemoveAll(id => string.Equals(id, row.ModId, StringComparison.OrdinalIgnoreCase));
         profile.UpdatedAtUtc = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        {
+            ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
+        }
+
+        ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
         _state.SaveLibraryAndCache();
         _state.Log(Loc.F("Profiles.RemoveMod.Log", row.DisplayName, profile.Name));
         _state.NotifyStateChanged();
@@ -1050,6 +1076,12 @@ public partial class ProfilesView : UserControl
 
         (profile.ModIds[idx], profile.ModIds[newIdx]) = (profile.ModIds[newIdx], profile.ModIds[idx]);
         profile.UpdatedAtUtc = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        {
+            ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
+        }
+
+        ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
         _state.SaveLibraryAndCache();
         RefreshSelectedProfileDetails();
 

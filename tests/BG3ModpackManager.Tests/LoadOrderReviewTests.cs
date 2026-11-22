@@ -128,5 +128,122 @@ internal static class LoadOrderReviewTests
         TestAssert.True(captured.ModIds.Contains(normalMod.Id), "Captured profile includes NormalMod");
         TestAssert.True(captured.ModIds.Contains(mcmMod.Id), "Captured profile includes MCM");
         TestAssert.True(captured.ModIds.Contains(noIntroMod.Id), "Captured profile includes active BG3MM Standalone Override (NoIntro.pak)");
+
+        // Add active loose Data and Game mods, re-capture active profile, link a BG3MM JSON load order, and sync:
+        string looseDataFile = Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "Shared", "Assets", "TestTexture.DDS");
+        Directory.CreateDirectory(Path.GetDirectoryName(looseDataFile)!);
+        await File.WriteAllTextAsync(looseDataFile, "DDS-DATA");
+        string looseDataSha = await HashService.ComputeFileSha256Async(looseDataFile);
+        var looseDataMod = new ModEntry
+        {
+            Id = "loose-data-test01",
+            DisplayName = "Mari Tattoos Loose Data",
+            Kind = ModKind.LooseData,
+            ContentHash = looseDataSha,
+            Location = ModLocation.Active,
+            TrackedFiles = new List<TrackedFileRecord>
+            {
+                new()
+                {
+                    Target = TrackedFileTarget.DataFolder,
+                    RelativePath = "Generated/Public/Shared/Assets/TestTexture.DDS",
+                    Sha256 = looseDataSha,
+                    FileSizeBytes = 8
+                }
+            }
+        };
+        sandbox.Db.Mods.Add(looseDataMod);
+
+        string looseGameFile = Path.Combine(sandbox.Settings.GameFolder, "bin", "NativeMods", "BG3NativeCameraTweaks.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(looseGameFile)!);
+        await File.WriteAllTextAsync(looseGameFile, "DLL-DATA");
+        string looseGameSha = await HashService.ComputeFileSha256Async(looseGameFile);
+        var looseGameMod = new ModEntry
+        {
+            Id = "loose-game-test02",
+            DisplayName = "Native Camera Tweaks",
+            Kind = ModKind.LooseGame,
+            ContentHash = looseGameSha,
+            Location = ModLocation.Active,
+            TrackedFiles = new List<TrackedFileRecord>
+            {
+                new()
+                {
+                    Target = TrackedFileTarget.GameFolder,
+                    RelativePath = "bin/NativeMods/BG3NativeCameraTweaks.dll",
+                    Sha256 = looseGameSha,
+                    FileSizeBytes = 8
+                }
+            }
+        };
+        sandbox.Db.Mods.Add(looseGameMod);
+
+        ModProfile capturedWithLoose = await ModLibraryService.CaptureActiveProfileFromModSettingsAsync(
+            "CapturedWithLoose",
+            useModSettingsLsx: true,
+            includeStandaloneOverrides: true,
+            includeActiveLooseMods: true,
+            sandbox.Settings,
+            sandbox.Db,
+            cache);
+
+        TestAssert.Equal(capturedWithLoose.Id, sandbox.Db.ActiveProfileId, "CapturedWithLoose is ActiveProfileId");
+        TestAssert.True(capturedWithLoose.ModIds.Contains(looseDataMod.Id), "CapturedWithLoose contains loose Data mod");
+        TestAssert.True(capturedWithLoose.ModIds.Contains(looseGameMod.Id), "CapturedWithLoose contains loose Game mod");
+
+        // Link a BG3MM JSON load order (which only lists normalMod + mcmMod, omitting standalone overrides & loose mods)
+        string linkedJsonPath = Path.Combine(sandbox.Settings.OrdersFolder, "ActiveSetupOrder.json");
+        Bg3LoadOrderService.SaveOrderJson(linkedJsonPath, new[]
+        {
+            new Bg3OrderEntry { Uuid = mod1Uuid, Name = "NormalMod" },
+            new Bg3OrderEntry { Uuid = ovrUuid, Name = "BG3MCM" }
+        });
+
+        capturedWithLoose.LinkedOrderJsonPath = linkedJsonPath;
+        ModLibraryService.LinkCompanionModsToOrderJson(sandbox.Db, linkedJsonPath, capturedWithLoose.ModIds);
+
+        // Simulate clicking "Sync from Linked JSON" (which passes includeActiveStandaloneOverrides: false, includeActiveLooseMods: false)
+        var (syncedProfile, _) = await ModLibraryService.CreateOrUpdateProfileFromJsonAsync(
+            linkedJsonPath,
+            capturedWithLoose.Name,
+            includeActiveStandaloneOverrides: false,
+            includeActiveLooseMods: false,
+            sandbox.Settings,
+            sandbox.Db,
+            cache,
+            existingProfile: capturedWithLoose);
+
+        TestAssert.True(syncedProfile.ModIds.Contains(noIntroMod.Id), "Synced profile preserves standalone override (NoIntro.pak)");
+        TestAssert.True(syncedProfile.ModIds.Contains(looseDataMod.Id), "Synced profile preserves loose Data mod at the end");
+        TestAssert.True(syncedProfile.ModIds.Contains(looseGameMod.Id), "Synced profile preserves loose Game mod at the end");
+        TestAssert.Equal(capturedWithLoose.Id, sandbox.Db.ActiveProfileId, "Synced profile remains recognized as ActiveProfileId");
+
+        // Simulate a legacy profile that had its loose mods stripped before companion linking existed:
+        sandbox.Db.JsonOrderCompanionModIds.Clear();
+        capturedWithLoose.ModIds.RemoveAll(id => id == noIntroMod.Id || id == looseDataMod.Id || id == looseGameMod.Id);
+        sandbox.Db.ActiveProfileId = null;
+
+        ModLibraryService.ReconcileActiveProfileId(sandbox.Settings, sandbox.Db);
+        TestAssert.True(capturedWithLoose.ModIds.Contains(noIntroMod.Id), "ReconcileActiveProfileId auto-recovers active standalone override");
+        TestAssert.True(capturedWithLoose.ModIds.Contains(looseDataMod.Id), "ReconcileActiveProfileId auto-recovers active loose Data mod");
+        TestAssert.True(capturedWithLoose.ModIds.Contains(looseGameMod.Id), "ReconcileActiveProfileId auto-recovers active loose Game mod");
+        TestAssert.Equal(capturedWithLoose.Id, sandbox.Db.ActiveProfileId, "ReconcileActiveProfileId restores ActiveProfileId to matched profile");
+
+        // Intentionally removing a loose mod and updating companion link must NOT re-add it on next sync:
+        capturedWithLoose.ModIds.Remove(looseGameMod.Id);
+        ModLibraryService.LinkCompanionModsToOrderJson(sandbox.Db, linkedJsonPath, capturedWithLoose.ModIds);
+
+        await ModLibraryService.CreateOrUpdateProfileFromJsonAsync(
+            linkedJsonPath,
+            capturedWithLoose.Name,
+            includeActiveStandaloneOverrides: false,
+            includeActiveLooseMods: false,
+            sandbox.Settings,
+            sandbox.Db,
+            cache,
+            existingProfile: capturedWithLoose);
+
+        TestAssert.True(capturedWithLoose.ModIds.Contains(looseDataMod.Id), "Remaining linked loose Data mod is kept after sync");
+        TestAssert.False(capturedWithLoose.ModIds.Contains(looseGameMod.Id), "Intentionally removed loose Game mod is not re-added after sync");
     }
 }

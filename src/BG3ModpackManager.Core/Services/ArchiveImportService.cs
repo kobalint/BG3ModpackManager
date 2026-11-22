@@ -181,7 +181,7 @@ public static class ArchiveImportService
                 result.ImportedModIds.Add(hybrid.Id);
             }
 
-            AssignToProfile(profile, hybrid.Id);
+            AssignToProfile(profile, hybrid.Id, db);
             return result;
         }
 
@@ -197,7 +197,7 @@ public static class ArchiveImportService
                 if (existing is not null)
                 {
                     result.ReusedDuplicateModIds.Add(existing.Id);
-                    AssignToProfile(profile, existing.Id);
+                    AssignToProfile(profile, existing.Id, db);
 
                     if (installActiveNow && existing.Location == ModLocation.Vault)
                     {
@@ -243,7 +243,7 @@ public static class ArchiveImportService
             newMod.Location = ModLibraryService.EvaluateModLocation(settings, newMod);
             db.Mods.Add(newMod);
             result.ImportedModIds.Add(newMod.Id);
-            AssignToProfile(profile, newMod.Id);
+            AssignToProfile(profile, newMod.Id, db);
         }
 
         // Import remaining Data/Game loose files as tracked loose mod(s) grouped by target.
@@ -268,7 +268,7 @@ public static class ArchiveImportService
             if (existingDup is not null)
             {
                 result.ReusedDuplicateModIds.Add(existingDup.Id);
-                AssignToProfile(profile, existingDup.Id);
+                AssignToProfile(profile, existingDup.Id, db);
                 if (installActiveNow && existingDup.Location == ModLocation.Vault)
                 {
                     ModLibraryService.ActivateModFromVault(existingDup, settings);
@@ -278,7 +278,7 @@ public static class ArchiveImportService
             {
                 db.Mods.Add(looseMod);
                 result.ImportedModIds.Add(looseMod.Id);
-                AssignToProfile(profile, looseMod.Id);
+                AssignToProfile(profile, looseMod.Id, db);
             }
         }
 
@@ -881,7 +881,7 @@ public static class ArchiveImportService
         ArchiveImportResult result)
         => ModLibraryService.BackupFileToVault(existingFilePath, relativePath, settings, result.BackedUpUnmanagedFiles);
 
-    private static void AssignToProfile(ModProfile? profile, string modId)
+    private static void AssignToProfile(ModProfile? profile, string modId, LibraryDatabase db)
     {
         if (profile is null)
         {
@@ -892,6 +892,10 @@ public static class ArchiveImportService
         {
             profile.ModIds.Add(modId);
             profile.UpdatedAtUtc = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+            {
+                ModLibraryService.LinkCompanionModsToOrderJson(db, profile.LinkedOrderJsonPath, profile.ModIds);
+            }
         }
     }
 }
