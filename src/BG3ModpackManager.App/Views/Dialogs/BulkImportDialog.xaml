@@ -23,16 +23,20 @@
                 <TextBox x:Name="FolderBox" TextChanged="OnFolderChanged" />
             </DockPanel>
 
-            <TextBlock x:Name="PreviewText" Style="{StaticResource MutedCaption}" Margin="0,0,0,12" Text="{helpers:Loc Dialog.BulkImport.PreviewPlaceholder}" />
+            <TextBlock x:Name="PreviewText" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,0,0,12" Text="{helpers:Loc Dialog.BulkImport.PreviewPlaceholder}" />
 
             <StackPanel Margin="0,0,0,16">
-                <RadioButton x:Name="CopyRadio" Content="{helpers:Loc Dialog.BulkImport.CopyRadio}" IsChecked="True" Margin="0,0,0,6" />
-                <RadioButton x:Name="MoveRadio" Content="{helpers:Loc Dialog.BulkImport.MoveRadio}" />
+                <RadioButton x:Name="CopyRadio" IsChecked="True" Margin="0,0,0,6">
+                    <TextBlock Text="{helpers:Loc Dialog.BulkImport.CopyRadio}" TextWrapping="Wrap" />
+                </RadioButton>
+                <RadioButton x:Name="MoveRadio">
+                    <TextBlock Text="{helpers:Loc Dialog.BulkImport.MoveRadio}" TextWrapping="Wrap" />
+                </RadioButton>
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="{helpers:Loc Common.Cancel}" Width="95" IsCancel="True" Margin="0,0,8,0" />
-                <Button x:Name="ImportButton" Content="{helpers:Loc Dialog.BulkImport.BtnImport}" Width="175" Style="{StaticResource AccentButton}" IsEnabled="False" IsDefault="True" Click="OnImportClick" />
+                <Button Content="{helpers:Loc Common.Cancel}" MinWidth="90" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
+                <Button x:Name="ImportButton" Content="{helpers:Loc Dialog.BulkImport.BtnImport}" MinWidth="155" Padding="14,6" Style="{StaticResource AccentButton}" IsEnabled="False" IsDefault="True" Click="OnImportClick" />
             </StackPanel>
         </StackPanel>
     </Border>

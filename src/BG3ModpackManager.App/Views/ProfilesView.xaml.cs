@@ -71,6 +71,9 @@ public partial class ProfilesView : UserControl
     private readonly AppState _state;
     private string? _selectedProfileId;
     private bool _suppressSelectionChanged;
+    private bool? _lastStackedMode;
+    private bool? _lastCompactHeader;
+    private double _savedLeftPaneWidth = 280;
 
     public ProfilesView(AppState state)
     {
@@ -80,6 +83,89 @@ public partial class ProfilesView : UserControl
         ThemeManager.ThemeChanged += _ => RefreshView();
         LocalizationManager.Instance.LanguageChanged += RefreshView;
         RefreshView();
+    }
+
+    private void OnViewSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double width = e.NewSize.Width;
+        if (width <= 0)
+        {
+            return;
+        }
+
+        bool stacked = width < 780;
+        bool compactHeader = (!stacked && width < 960) || width < 640;
+
+        if (_lastStackedMode != stacked)
+        {
+            _lastStackedMode = stacked;
+            if (stacked)
+            {
+                if (LeftPaneColumn.Width.IsAbsolute && LeftPaneColumn.Width.Value >= 240)
+                {
+                    _savedLeftPaneWidth = Math.Clamp(LeftPaneColumn.Width.Value, 240, 400);
+                }
+
+                ProfilesListBox.MaxHeight = 130;
+                ProfileActionsGrid.Columns = 4;
+                ProfilesSplitter.Visibility = Visibility.Collapsed;
+                LeftPaneColumn.MinWidth = 0;
+                LeftPaneColumn.Width = new GridLength(0);
+                SplitterColumn.Width = new GridLength(0);
+
+                Grid.SetRow(ProfilesListCard, 0);
+                Grid.SetRowSpan(ProfilesListCard, 1);
+                Grid.SetColumn(ProfilesListCard, 0);
+                Grid.SetColumnSpan(ProfilesListCard, 3);
+                ProfilesListCard.Margin = new Thickness(0, 0, 0, 10);
+
+                Grid.SetRow(ProfileDetailsGrid, 2);
+                Grid.SetRowSpan(ProfileDetailsGrid, 1);
+                Grid.SetColumn(ProfileDetailsGrid, 0);
+                Grid.SetColumnSpan(ProfileDetailsGrid, 3);
+            }
+            else
+            {
+                ProfilesListBox.ClearValue(MaxHeightProperty);
+                ProfileActionsGrid.Columns = 2;
+                ProfilesSplitter.Visibility = Visibility.Visible;
+                LeftPaneColumn.MinWidth = 240;
+                LeftPaneColumn.Width = new GridLength(_savedLeftPaneWidth);
+                SplitterColumn.Width = new GridLength(10);
+
+                Grid.SetRow(ProfilesListCard, 0);
+                Grid.SetRowSpan(ProfilesListCard, 3);
+                Grid.SetColumn(ProfilesListCard, 0);
+                Grid.SetColumnSpan(ProfilesListCard, 1);
+                ProfilesListCard.Margin = new Thickness(0);
+
+                Grid.SetRow(ProfileDetailsGrid, 0);
+                Grid.SetRowSpan(ProfileDetailsGrid, 3);
+                Grid.SetColumn(ProfileDetailsGrid, 2);
+                Grid.SetColumnSpan(ProfileDetailsGrid, 1);
+            }
+        }
+
+        if (_lastCompactHeader != compactHeader)
+        {
+            _lastCompactHeader = compactHeader;
+            if (compactHeader)
+            {
+                Grid.SetRow(SwitchProfileButton, 1);
+                Grid.SetColumn(SwitchProfileButton, 0);
+                Grid.SetColumnSpan(SwitchProfileButton, 2);
+                SwitchProfileButton.HorizontalAlignment = HorizontalAlignment.Left;
+                SwitchProfileButton.Margin = new Thickness(0, 6, 0, 0);
+            }
+            else
+            {
+                Grid.SetRow(SwitchProfileButton, 0);
+                Grid.SetColumn(SwitchProfileButton, 1);
+                Grid.SetColumnSpan(SwitchProfileButton, 1);
+                SwitchProfileButton.HorizontalAlignment = HorizontalAlignment.Right;
+                SwitchProfileButton.Margin = new Thickness(8, 0, 0, 0);
+            }
+        }
     }
 
     public void RefreshView()

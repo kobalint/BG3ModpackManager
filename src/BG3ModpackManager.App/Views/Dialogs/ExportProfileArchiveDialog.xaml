@@ -5,96 +5,122 @@
         Title="{helpers:Loc Dialog.Export7z.Title}"
         Style="{StaticResource AppWindowStyle}"
         Width="620"
-        SizeToContent="Height"
+        Height="620"
+        MinWidth="500"
+        MinHeight="440"
+        MaxHeight="720"
+        ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize"
         ShowInTaskbar="False">
-    <Border Padding="20">
-        <StackPanel>
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{helpers:Loc Dialog.Export7z.Heading}" Margin="0,0,0,4" />
-            <TextBlock x:Name="SubtitleText" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,0,0,14" />
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-            <!-- Profile Breakdown Summary Card -->
-            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
-                <StackPanel>
-                    <TextBlock Text="{helpers:Loc Dialog.Export7z.SummaryHeader}" FontWeight="SemiBold" Foreground="{DynamicResource BrushAccentSoft}" Margin="0,0,0,8" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="{helpers:Loc Dialog.Export7z.Heading}" Margin="0,0,0,4" TextWrapping="Wrap" />
+                <TextBlock x:Name="SubtitleText" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,0,0,14" />
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowPaks}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,0,4" />
-                        <TextBlock x:Name="PakSummaryText" Grid.Row="0" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
+                <!-- Profile Breakdown Summary Card -->
+                <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.SummaryHeader}" FontWeight="SemiBold" Foreground="{DynamicResource BrushAccentSoft}" Margin="0,0,0,8" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowData}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,0,4" />
-                        <TextBlock x:Name="DataSummaryText" Grid.Row="1" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowPaks}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,8,4" TextWrapping="Wrap" />
+                            <TextBlock x:Name="PakSummaryText" Grid.Row="0" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowGame}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,0,4" />
-                        <TextBlock x:Name="GameSummaryText" Grid.Row="2" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowData}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,8,4" TextWrapping="Wrap" />
+                            <TextBlock x:Name="DataSummaryText" Grid.Row="1" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowGenerated}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,0,4" />
-                        <TextBlock x:Name="LiveGeneratedSummaryText" Grid.Row="3" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowGame}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,8,4" TextWrapping="Wrap" />
+                            <TextBlock x:Name="GameSummaryText" Grid.Row="2" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowBin}" Foreground="{DynamicResource BrushTextSecondary}" />
-                        <TextBlock x:Name="LiveBinSummaryText" Grid.Row="4" Grid.Column="1" FontWeight="SemiBold" />
-                    </Grid>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowGenerated}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,8,4" TextWrapping="Wrap" />
+                            <TextBlock x:Name="LiveGeneratedSummaryText" Grid.Row="3" Grid.Column="1" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.RowBin}" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,8,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="LiveBinSummaryText" Grid.Row="4" Grid.Column="1" FontWeight="SemiBold" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Missing / Warnings Banner -->
+                <Border x:Name="WarningBanner"
+                        Background="{DynamicResource BrushBadgeAmberBg}"
+                        BorderBrush="{DynamicResource BrushBadgeAmberBorder}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="10,8"
+                        Margin="0,0,0,14"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="WarningBannerText" Foreground="{DynamicResource BrushAmber}" TextWrapping="Wrap" FontSize="12" />
+                </Border>
+
+                <!-- Destination Archive Path -->
+                <TextBlock Text="{helpers:Loc Dialog.Export7z.DestLabel}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <DockPanel Margin="0,0,0,14">
+                    <Button DockPanel.Dock="Right" Content="{helpers:Loc Common.Browse}" MinWidth="92" Padding="10,5" Margin="8,0,0,0" Click="OnBrowseClick" />
+                    <TextBox x:Name="OutputPathBox" />
+                </DockPanel>
+
+                <!-- Options Checkboxes -->
+                <TextBlock Text="{helpers:Loc Dialog.Export7z.ContentsLabel}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <StackPanel Margin="0,0,0,14">
+                    <CheckBox x:Name="IncludePaksCheck" Margin="0,0,0,6">
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludePaks}" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <CheckBox x:Name="IncludeLooseCheck" Margin="0,0,0,6">
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeLoose}" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <CheckBox x:Name="IncludeGeneratedCheck" Margin="0,0,0,6">
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeGenerated}" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <CheckBox x:Name="IncludeBinCheck" Margin="0,0,0,6">
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeBin}" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <CheckBox x:Name="IncludeOrderJsonCheck" IsChecked="True" Margin="0,0,0,6">
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeJson}" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <CheckBox x:Name="IncludeManifestCheck" IsChecked="True">
+                        <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeManifest}" TextWrapping="Wrap" />
+                    </CheckBox>
                 </StackPanel>
-            </Border>
 
-            <!-- Missing / Warnings Banner -->
-            <Border x:Name="WarningBanner"
-                    Background="{DynamicResource BrushBadgeAmberBg}"
-                    BorderBrush="{DynamicResource BrushBadgeAmberBorder}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="10,8"
-                    Margin="0,0,0,14"
-                    Visibility="Collapsed">
-                <TextBlock x:Name="WarningBannerText" Foreground="{DynamicResource BrushAmber}" TextWrapping="Wrap" FontSize="12" />
-            </Border>
-
-            <!-- Destination Archive Path -->
-            <TextBlock Text="{helpers:Loc Dialog.Export7z.DestLabel}" FontWeight="SemiBold" Margin="0,0,0,6" />
-            <DockPanel Margin="0,0,0,14">
-                <Button DockPanel.Dock="Right" Content="{helpers:Loc Common.Browse}" Width="106" Margin="8,0,0,0" Click="OnBrowseClick" />
-                <TextBox x:Name="OutputPathBox" />
-            </DockPanel>
-
-            <!-- Options Checkboxes -->
-            <TextBlock Text="{helpers:Loc Dialog.Export7z.ContentsLabel}" FontWeight="SemiBold" Margin="0,0,0,6" />
-            <StackPanel Margin="0,0,0,14">
-                <CheckBox x:Name="IncludePaksCheck" Content="{helpers:Loc Dialog.Export7z.IncludePaks}" Margin="0,0,0,6" />
-                <CheckBox x:Name="IncludeLooseCheck" Content="{helpers:Loc Dialog.Export7z.IncludeLoose}" Margin="0,0,0,6" />
-                <CheckBox x:Name="IncludeGeneratedCheck" Content="{helpers:Loc Dialog.Export7z.IncludeGenerated}" Margin="0,0,0,6" />
-                <CheckBox x:Name="IncludeBinCheck" Content="{helpers:Loc Dialog.Export7z.IncludeBin}" Margin="0,0,0,6" />
-                <CheckBox x:Name="IncludeOrderJsonCheck" Content="{helpers:Loc Dialog.Export7z.IncludeJson}" IsChecked="True" Margin="0,0,0,6" />
-                <CheckBox x:Name="IncludeManifestCheck" Content="{helpers:Loc Dialog.Export7z.IncludeManifest}" IsChecked="True" />
+                <!-- Compression Level -->
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="135" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{helpers:Loc Dialog.Export7z.CompLabel}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <ComboBox x:Name="CompressionCombo" Grid.Column="1" SelectedIndex="1">
+                        <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp0}" Tag="0" />
+                        <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp1}" Tag="1" />
+                        <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp5}" Tag="5" />
+                        <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp7}" Tag="7" />
+                    </ComboBox>
+                </Grid>
             </StackPanel>
+        </ScrollViewer>
 
-            <!-- Compression Level -->
-            <DockPanel Margin="0,0,0,18">
-                <TextBlock DockPanel.Dock="Left" Text="{helpers:Loc Dialog.Export7z.CompLabel}" FontWeight="SemiBold" VerticalAlignment="Center" Width="145" />
-                <ComboBox x:Name="CompressionCombo" SelectedIndex="1">
-                    <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp0}" Tag="0" />
-                    <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp1}" Tag="1" />
-                    <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp5}" Tag="5" />
-                    <ComboBoxItem Content="{helpers:Loc Dialog.Export7z.Comp7}" Tag="7" />
-                </ComboBox>
-            </DockPanel>
-
-            <!-- Footer Buttons -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="{helpers:Loc Common.Cancel}" Width="95" IsCancel="True" Margin="0,0,8,0" />
-                <Button Content="{helpers:Loc Dialog.Export7z.BtnExport}" Width="140" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnExportClick" />
-            </StackPanel>
+        <!-- Footer Buttons -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="{helpers:Loc Common.Cancel}" MinWidth="90" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
+            <Button Content="{helpers:Loc Dialog.Export7z.BtnExport}" MinWidth="135" Padding="14,6" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnExportClick" />
         </StackPanel>
-    </Border>
+    </Grid>
 </Window>

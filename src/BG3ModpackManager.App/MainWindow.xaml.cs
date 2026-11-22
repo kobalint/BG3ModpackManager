@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using BG3ModpackManager.App.Services;
 using BG3ModpackManager.App.Views;
@@ -9,17 +10,35 @@ namespace BG3ModpackManager.App;
 
 public partial class MainWindow : Window
 {
+    private enum LayoutTier
+    {
+        Wide,
+        Medium,
+        Narrow
+    }
+
     private readonly AppState _state;
     private readonly ProfilesView _profilesView;
     private readonly LoadOrderReviewView _reviewView;
     private readonly LibraryView _libraryView;
     private readonly SettingsView _settingsView;
     private readonly DispatcherTimer _gameProcessTimer;
+    private readonly CancellationTokenSource _shutdownCts = new();
+    private LayoutTier? _lastLayoutTier;
+    private bool? _lastShowSubtitle;
+    private bool? _lastCompactHeight;
 
     public MainWindow(AppState state)
     {
         InitializeComponent();
         _state = state;
+
+        Rect workArea = SystemParameters.WorkArea;
+        if (workArea.Width > 0 && workArea.Height > 0)
+        {
+            Width = Math.Max(MinWidth, Math.Min(Width, workArea.Width - 24));
+            Height = Math.Max(MinHeight, Math.Min(Height, workArea.Height - 24));
+        }
 
         _profilesView = new ProfilesView(state);
         _reviewView = new LoadOrderReviewView(state);
@@ -30,12 +49,24 @@ public partial class MainWindow : Window
 
         ActivityLogList.ItemsSource = _state.ActivityLog;
         _state.StateChanged += RefreshChrome;
-        _state.StatusMessagePublished += msg => Dispatcher.Invoke(() => StatusBarText.Text = msg);
-        _state.BusyStateChanged += (isBusy, msg) => Dispatcher.Invoke(() =>
+        _state.StatusMessagePublished += msg =>
         {
-            BusyOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
-            BusyMessageText.Text = string.IsNullOrWhiteSpace(msg) ? Loc.T("App.PleaseWait") : msg;
-        });
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+            {
+                Dispatcher.BeginInvoke(() => StatusBarText.Text = msg);
+            }
+        };
+        _state.BusyStateChanged += (isBusy, msg) =>
+        {
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    BusyOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+                    BusyMessageText.Text = string.IsNullOrWhiteSpace(msg) ? Loc.T("App.PleaseWait") : msg;
+                });
+            }
+        };
 
         ThemeManager.ThemeChanged += OnThemeChanged;
         LocalizationManager.Instance.LanguageChanged += OnLanguageChanged;
@@ -59,13 +90,127 @@ public partial class MainWindow : Window
             _gameProcessTimer.Stop();
             ThemeManager.ThemeChanged -= OnThemeChanged;
             LocalizationManager.Instance.LanguageChanged -= OnLanguageChanged;
+            _shutdownCts.Cancel();
+            _shutdownCts.Dispose();
         };
     }
 
     private async void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
+        ApplyResponsiveLayout(ActualWidth, ActualHeight);
         _gameProcessTimer.Start();
         await RunInitialScanAsync();
+    }
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyResponsiveLayout(e.NewSize.Width, e.NewSize.Height);
+    }
+
+    private void ApplyResponsiveLayout(double width, double height)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        LayoutTier tier = width >= 1160
+            ? LayoutTier.Wide
+            : (width >= 900 ? LayoutTier.Medium : LayoutTier.Narrow);
+        bool showSubtitle = width >= 1040;
+        bool compactHeight = height < 640;
+
+        if (_lastLayoutTier == tier &&
+            _lastShowSubtitle == showSubtitle &&
+            _lastCompactHeight == compactHeight)
+        {
+            return;
+        }
+
+        _lastLayoutTier = tier;
+        _lastShowSubtitle = showSubtitle;
+        _lastCompactHeight = compactHeight;
+
+        ActivityDrawer.Height = compactHeight ? 115 : 160;
+        AppSubtitleText.Visibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed;
+
+        bool isNarrow = tier == LayoutTier.Narrow;
+        if (isNarrow)
+        {
+            Grid.SetRow(HeaderControlsPanel, 1);
+            Grid.SetColumn(HeaderControlsPanel, 0);
+            Grid.SetColumnSpan(HeaderControlsPanel, 2);
+            HeaderControlsPanel.HorizontalAlignment = HorizontalAlignment.Left;
+            HeaderControlsPanel.Margin = new Thickness(0, 8, 0, 0);
+
+            DropHintBorder.Visibility = Visibility.Collapsed;
+            QuickSwitchLabel.Visibility = Visibility.Visible;
+            QuickProfileCombo.Width = 180;
+            ActiveProfilePillText.MaxWidth = 220;
+
+            NavColumn.Width = new GridLength(0);
+            Grid.SetRow(NavBorder, 0);
+            Grid.SetRowSpan(NavBorder, 1);
+            Grid.SetColumn(NavBorder, 0);
+            Grid.SetColumnSpan(NavBorder, 2);
+            NavBorder.BorderThickness = new Thickness(0, 0, 0, 1);
+
+            NavItemsPanel.Orientation = Orientation.Horizontal;
+            NavItemsPanel.Margin = new Thickness(8, 4, 8, 4);
+            SetNavButtonStyle("NavButtonHorizontal");
+
+            SidebarFooterBorder.Visibility = Visibility.Collapsed;
+            StatusBarStatsText.Visibility = Visibility.Visible;
+
+            Grid.SetRow(ViewHost, 1);
+            Grid.SetRowSpan(ViewHost, 1);
+            Grid.SetColumn(ViewHost, 0);
+            Grid.SetColumnSpan(ViewHost, 2);
+        }
+        else
+        {
+            Grid.SetRow(HeaderControlsPanel, 0);
+            Grid.SetColumn(HeaderControlsPanel, 1);
+            Grid.SetColumnSpan(HeaderControlsPanel, 1);
+            HeaderControlsPanel.HorizontalAlignment = HorizontalAlignment.Right;
+            HeaderControlsPanel.Margin = new Thickness(0);
+
+            bool isWide = tier == LayoutTier.Wide;
+            DropHintBorder.Visibility = isWide ? Visibility.Visible : Visibility.Collapsed;
+            QuickSwitchLabel.Visibility = isWide ? Visibility.Visible : Visibility.Collapsed;
+            QuickProfileCombo.Width = isWide ? 200 : 165;
+            ActiveProfilePillText.MaxWidth = isWide ? 260 : 190;
+
+            NavColumn.Width = new GridLength(isWide ? 220 : 180);
+            Grid.SetRow(NavBorder, 0);
+            Grid.SetRowSpan(NavBorder, 2);
+            Grid.SetColumn(NavBorder, 0);
+            Grid.SetColumnSpan(NavBorder, 1);
+            NavBorder.BorderThickness = new Thickness(0, 0, 1, 0);
+
+            NavItemsPanel.Orientation = Orientation.Vertical;
+            NavItemsPanel.Margin = new Thickness(0, 10, 0, 0);
+            SetNavButtonStyle("NavButton");
+
+            SidebarFooterBorder.Visibility = Visibility.Visible;
+            StatusBarStatsText.Visibility = Visibility.Collapsed;
+
+            Grid.SetRow(ViewHost, 0);
+            Grid.SetRowSpan(ViewHost, 2);
+            Grid.SetColumn(ViewHost, 1);
+            Grid.SetColumnSpan(ViewHost, 1);
+        }
+    }
+
+    private void SetNavButtonStyle(string styleKey)
+    {
+        if (TryFindResource(styleKey) is Style navStyle)
+        {
+            NavProfiles.Style = navStyle;
+            NavReview.Style = navStyle;
+            NavLibrary.Style = navStyle;
+            NavSettings.Style = navStyle;
+        }
     }
 
     private void OnThemeChanged(AppTheme _) => UpdateThemeToggleButton();
@@ -118,13 +263,17 @@ public partial class MainWindow : Window
                 _state.Settings,
                 _state.Db,
                 _state.Cache,
-                progress));
+                progress,
+                _shutdownCts.Token), _shutdownCts.Token);
 
             _state.SaveLibraryAndCache();
             _state.Log(Loc.F("App.StartupScanLog", _state.Db.Mods.Count, adopted, updated));
             _state.NotifyStateChanged();
 
             await _reviewView.LoadOrRefreshInitialAuditAsync();
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception ex)
         {
@@ -156,6 +305,7 @@ public partial class MainWindow : Window
         NavProfilesCount.Text = _state.Db.Profiles.Count.ToString();
         NavLibraryCount.Text = _state.Db.Mods.Count.ToString();
         SidebarStatsText.Text = Loc.F("App.SidebarStatsFormat", _state.Db.Mods.Count, _state.Db.Profiles.Count);
+        StatusBarStatsText.Text = SidebarStatsText.Text;
 
         int unlistedOverrides = _state.LatestAudit?.UnlistedOverrideCount ?? 0;
         NavReviewAlertBadge.Visibility = unlistedOverrides > 0 ? Visibility.Visible : Visibility.Collapsed;

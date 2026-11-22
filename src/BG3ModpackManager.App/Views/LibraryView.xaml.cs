@@ -581,4 +581,49 @@ public partial class LibraryView : UserControl
             MessageBox.Show(Window.GetWindow(this), ex.Message, Loc.T("Library.Uninstall.ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    private void OnViewSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double width = e.NewSize.Width;
+        if (width <= 0)
+        {
+            return;
+        }
+
+        if (width < 1100)
+        {
+            Grid.SetRow(ToolbarButtonsPanel, 1);
+            Grid.SetColumn(ToolbarButtonsPanel, 0);
+            Grid.SetColumnSpan(ToolbarButtonsPanel, 2);
+            ToolbarButtonsPanel.HorizontalAlignment = HorizontalAlignment.Left;
+            ToolbarButtonsPanel.Margin = new Thickness(0, 8, 0, 0);
+        }
+        else
+        {
+            Grid.SetRow(ToolbarButtonsPanel, 0);
+            Grid.SetColumn(ToolbarButtonsPanel, 1);
+            Grid.SetColumnSpan(ToolbarButtonsPanel, 1);
+            ToolbarButtonsPanel.HorizontalAlignment = HorizontalAlignment.Right;
+            ToolbarButtonsPanel.Margin = new Thickness(0);
+        }
+
+        KpiStrip.Columns = width >= 960 ? 6 : 3;
+
+        if (width < 960)
+        {
+            Grid.SetColumnSpan(SearchBox, 2);
+            Grid.SetRow(FilterPanel, 1);
+            Grid.SetColumn(FilterPanel, 0);
+            Grid.SetColumnSpan(FilterPanel, 2);
+            FilterPanel.Margin = new Thickness(0, 6, 0, 0);
+        }
+        else
+        {
+            Grid.SetColumnSpan(SearchBox, 1);
+            Grid.SetRow(FilterPanel, 0);
+            Grid.SetColumn(FilterPanel, 1);
+            Grid.SetColumnSpan(FilterPanel, 1);
+            FilterPanel.Margin = new Thickness(12, 0, 0, 0);
+        }
+    }
 }

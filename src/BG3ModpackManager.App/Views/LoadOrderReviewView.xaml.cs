@@ -691,4 +691,49 @@ public partial class LoadOrderReviewView : UserControl
             new PakInspectorDialog(live) { Owner = Window.GetWindow(this) }.ShowDialog();
         }
     }
+
+    private void OnViewSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double width = e.NewSize.Width;
+        if (width <= 0)
+        {
+            return;
+        }
+
+        KpiStrip.Columns = width >= 980 ? 6 : 3;
+
+        if (width < 760)
+        {
+            Grid.SetRow(LsxStatusPill, 1);
+            Grid.SetColumn(LsxStatusPill, 0);
+            Grid.SetColumnSpan(LsxStatusPill, 2);
+            LsxStatusPill.HorizontalAlignment = HorizontalAlignment.Left;
+            LsxStatusPill.Margin = new Thickness(0, 6, 0, 0);
+        }
+        else
+        {
+            Grid.SetRow(LsxStatusPill, 0);
+            Grid.SetColumn(LsxStatusPill, 1);
+            Grid.SetColumnSpan(LsxStatusPill, 1);
+            LsxStatusPill.HorizontalAlignment = HorizontalAlignment.Right;
+            LsxStatusPill.Margin = new Thickness(0);
+        }
+
+        if (width < 960)
+        {
+            Grid.SetColumnSpan(SearchBox, 2);
+            Grid.SetRow(FilterPanel, 1);
+            Grid.SetColumn(FilterPanel, 0);
+            Grid.SetColumnSpan(FilterPanel, 2);
+            FilterPanel.Margin = new Thickness(0, 6, 0, 0);
+        }
+        else
+        {
+            Grid.SetColumnSpan(SearchBox, 1);
+            Grid.SetRow(FilterPanel, 0);
+            Grid.SetColumn(FilterPanel, 1);
+            Grid.SetColumnSpan(FilterPanel, 1);
+            FilterPanel.Margin = new Thickness(12, 0, 0, 0);
+        }
+    }
 }

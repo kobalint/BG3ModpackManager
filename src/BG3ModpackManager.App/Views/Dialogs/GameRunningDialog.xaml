@@ -40,10 +40,10 @@
                        Text="{helpers:Loc Dialog.GameRunning.HintDefault}" />
 
             <DockPanel>
-                <Button DockPanel.Dock="Left" Content="{helpers:Loc Common.Cancel}" Width="95" IsCancel="True" />
+                <Button DockPanel.Dock="Left" Content="{helpers:Loc Common.Cancel}" MinWidth="90" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="GracefulCloseButton" Content="{helpers:Loc Dialog.GameRunning.BtnGraceful}" Click="OnGracefulCloseClick" Margin="0,0,8,0" />
-                    <Button x:Name="RecheckButton" Content="{helpers:Loc Dialog.GameRunning.BtnRecheck}" Style="{StaticResource AccentButton}" Width="135" IsDefault="True" Click="OnRecheckClick" />
+                    <Button x:Name="GracefulCloseButton" Content="{helpers:Loc Dialog.GameRunning.BtnGraceful}" Click="OnGracefulCloseClick" Padding="12,6" Margin="0,0,8,0" />
+                    <Button x:Name="RecheckButton" Content="{helpers:Loc Dialog.GameRunning.BtnRecheck}" Style="{StaticResource AccentButton}" MinWidth="120" Padding="14,6" IsDefault="True" Click="OnRecheckClick" />
                 </StackPanel>
             </DockPanel>
         </StackPanel>

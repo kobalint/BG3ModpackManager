@@ -6,8 +6,8 @@
         Style="{StaticResource AppWindowStyle}"
         Width="860"
         Height="640"
-        MinWidth="680"
-        MinHeight="480"
+        MinWidth="580"
+        MinHeight="440"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
     <Grid Margin="18">
@@ -22,8 +22,8 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock x:Name="HeadingText" Style="{StaticResource SectionTitle}" />
-            <TextBlock x:Name="SubtitleText" Style="{StaticResource MutedCaption}" Margin="0,3,0,0" />
+            <TextBlock x:Name="HeadingText" Style="{StaticResource SectionTitle}" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="SubtitleText" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,3,0,0" />
         </StackPanel>
 
         <!-- Profile Name Input -->
@@ -54,19 +54,23 @@
         <DataGrid x:Name="ItemsGrid" Grid.Row="4" IsReadOnly="False">
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Import" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="65" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Name" Binding="{Binding DisplayName}" IsReadOnly="True" Width="1.6*" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Name" Binding="{Binding DisplayName}" IsReadOnly="True" Width="1.6*" MinWidth="140" />
                 <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Type" Binding="{Binding KindLabel}" IsReadOnly="True" Width="95" />
                 <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Files" Binding="{Binding FileCount}" IsReadOnly="True" Width="60" />
                 <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Size" Binding="{Binding SizeText}" IsReadOnly="True" Width="85" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Notes" Binding="{Binding NotesText}" IsReadOnly="True" Width="1.6*" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ImportPack.Col.Notes" Binding="{Binding NotesText}" IsReadOnly="True" Width="1.6*" MinWidth="140" />
             </DataGrid.Columns>
         </DataGrid>
 
         <!-- Install Mode Options -->
         <Border Grid.Row="5" Style="{StaticResource CardBorder}" Margin="0,10,0,0">
             <StackPanel>
-                <RadioButton x:Name="InstallActiveRadio" Content="{helpers:Loc Dialog.ImportPack.InstallActive}" Margin="0,0,0,6" />
-                <RadioButton x:Name="StoreVaultRadio" Content="{helpers:Loc Dialog.ImportPack.StoreVault}" />
+                <RadioButton x:Name="InstallActiveRadio" Margin="0,0,0,6">
+                    <TextBlock Text="{helpers:Loc Dialog.ImportPack.InstallActive}" TextWrapping="Wrap" />
+                </RadioButton>
+                <RadioButton x:Name="StoreVaultRadio">
+                    <TextBlock Text="{helpers:Loc Dialog.ImportPack.StoreVault}" TextWrapping="Wrap" />
+                </RadioButton>
             </StackPanel>
         </Border>
 
@@ -74,8 +78,8 @@
         <DockPanel Grid.Row="6" Margin="0,12,0,0">
             <TextBlock x:Name="SelectedSummaryText" DockPanel.Dock="Left" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="{helpers:Loc Common.Cancel}" Width="95" IsCancel="True" Margin="0,0,8,0" />
-                <Button x:Name="ImportButton" Content="{helpers:Loc Dialog.ImportPack.BtnImport}" Width="165" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnImportClick" />
+                <Button Content="{helpers:Loc Common.Cancel}" MinWidth="90" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
+                <Button x:Name="ImportButton" Content="{helpers:Loc Dialog.ImportPack.BtnImport}" MinWidth="150" Padding="14,6" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnImportClick" />
             </StackPanel>
         </DockPanel>
     </Grid>

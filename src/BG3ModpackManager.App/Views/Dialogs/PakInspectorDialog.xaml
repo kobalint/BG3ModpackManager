@@ -6,8 +6,8 @@
         Style="{StaticResource AppWindowStyle}"
         Width="780"
         Height="580"
-        MinWidth="600"
-        MinHeight="420"
+        MinWidth="520"
+        MinHeight="380"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
     <Grid Margin="18">

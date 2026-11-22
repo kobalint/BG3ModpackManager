@@ -6,8 +6,8 @@
         Style="{StaticResource AppWindowStyle}"
         Width="880"
         Height="610"
-        MinWidth="700"
-        MinHeight="460"
+        MinWidth="600"
+        MinHeight="440"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
     <Grid Margin="18">
@@ -19,14 +19,14 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock x:Name="SourceTitleText" Style="{StaticResource SectionTitle}" />
-            <TextBlock x:Name="SourceSubtitleText" Style="{StaticResource MutedCaption}" Margin="0,3,0,0" />
+            <TextBlock x:Name="SourceTitleText" Style="{StaticResource SectionTitle}" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="SourceSubtitleText" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,3,0,0" />
         </StackPanel>
 
         <DataGrid x:Name="ItemsGrid" Grid.Row="1" IsReadOnly="False">
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Import" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="65" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Item" Binding="{Binding DisplayName}" IsReadOnly="True" Width="1.5*" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Item" Binding="{Binding DisplayName}" IsReadOnly="True" Width="1.5*" MinWidth="130" />
                 <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Dest" Width="165">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
@@ -40,7 +40,7 @@
                 </DataGridTemplateColumn>
                 <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Files" Binding="{Binding FileCount}" IsReadOnly="True" Width="60" />
                 <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Size" Binding="{Binding SizeText}" IsReadOnly="True" Width="85" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Notes" Binding="{Binding StatusNotes}" IsReadOnly="True" Width="2*" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.ArchiveImport.Col.Notes" Binding="{Binding StatusNotes}" IsReadOnly="True" Width="2*" MinWidth="140" />
             </DataGrid.Columns>
         </DataGrid>
 
@@ -52,19 +52,19 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                    <CheckBox x:Name="HybridCheckBox"
-                              Content="{helpers:Loc Dialog.ArchiveImport.HybridCheck}"
-                              Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton x:Name="ActiveRadio" Content="{helpers:Loc Dialog.ArchiveImport.InstallActive}" IsChecked="True" Margin="0,0,18,0" />
-                        <RadioButton x:Name="VaultRadio" Content="{helpers:Loc Dialog.ArchiveImport.StoreVault}" />
-                    </StackPanel>
+                    <CheckBox x:Name="HybridCheckBox" Margin="0,0,0,10">
+                        <TextBlock Text="{helpers:Loc Dialog.ArchiveImport.HybridCheck}" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <WrapPanel Orientation="Horizontal">
+                        <RadioButton x:Name="ActiveRadio" Content="{helpers:Loc Dialog.ArchiveImport.InstallActive}" IsChecked="True" Margin="0,2,16,2" />
+                        <RadioButton x:Name="VaultRadio" Content="{helpers:Loc Dialog.ArchiveImport.StoreVault}" Margin="0,2,0,2" />
+                    </WrapPanel>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1">
-                    <TextBlock Text="{helpers:Loc Dialog.ArchiveImport.LooseNameLabel}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Text="{helpers:Loc Dialog.ArchiveImport.LooseNameLabel}" FontWeight="SemiBold" Margin="0,0,0,4" TextWrapping="Wrap" />
                     <TextBox x:Name="CustomNameBox" Margin="0,0,0,8" />
-                    <TextBlock Text="{helpers:Loc Dialog.ArchiveImport.ProfileLabel}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Text="{helpers:Loc Dialog.ArchiveImport.ProfileLabel}" FontWeight="SemiBold" Margin="0,0,0,4" TextWrapping="Wrap" />
                     <ComboBox x:Name="ProfileCombo" DisplayMemberPath="Label" SelectedValuePath="ProfileId" />
                 </StackPanel>
             </Grid>
@@ -73,8 +73,8 @@
         <DockPanel Grid.Row="3" Margin="0,12,0,0">
             <TextBlock x:Name="SummaryLabel" DockPanel.Dock="Left" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="{helpers:Loc Common.Cancel}" Width="95" IsCancel="True" Margin="0,0,8,0" />
-                <Button x:Name="ImportButton" Content="{helpers:Loc Dialog.ArchiveImport.BtnImport}" Width="165" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnImportClick" />
+                <Button Content="{helpers:Loc Common.Cancel}" MinWidth="90" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
+                <Button x:Name="ImportButton" Content="{helpers:Loc Dialog.ArchiveImport.BtnImport}" MinWidth="150" Padding="14,6" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnImportClick" />
             </StackPanel>
         </DockPanel>
     </Grid>

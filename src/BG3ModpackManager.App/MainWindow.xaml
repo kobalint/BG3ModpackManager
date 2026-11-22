@@ -4,12 +4,13 @@
         xmlns:helpers="clr-namespace:BG3ModpackManager.App.Helpers"
         Title="{helpers:Loc App.Title}"
         Style="{StaticResource AppWindowStyle}"
-        Width="1320"
-        Height="830"
-        MinWidth="1040"
-        MinHeight="660"
+        Width="1280"
+        Height="800"
+        MinWidth="760"
+        MinHeight="540"
         AllowDrop="True"
         WindowStartupLocation="CenterScreen"
+        SizeChanged="OnWindowSizeChanged"
         PreviewDragEnter="OnWindowDragEnter"
         PreviewDragOver="OnWindowDragOver"
         PreviewDragLeave="OnWindowDragLeave"
@@ -23,34 +24,36 @@
         </Grid.RowDefinitions>
 
         <!-- Top Header Bar -->
-        <Border Grid.Row="0" Background="{DynamicResource BrushBgSidebar}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1" Padding="16,10">
-            <DockPanel>
-                <!-- Right: Quick Profile Switcher, Refresh & Theme Toggle -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Background="{DynamicResource BrushBgDropHint}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" CornerRadius="4" Padding="10,4" Margin="0,0,12,0">
-                        <TextBlock Text="{helpers:Loc App.DropHint}" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" />
-                    </Border>
-                    <TextBlock Text="{helpers:Loc Nav.QuickSwitch}" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" Margin="0,0,6,0" />
-                    <ComboBox x:Name="QuickProfileCombo" Width="210" DisplayMemberPath="Name" Margin="0,0,6,0" />
-                    <Button x:Name="QuickSwitchButton" Content="{helpers:Loc Nav.Switch}" Style="{StaticResource AccentButton}" Click="OnQuickSwitchClick" Margin="0,0,8,0" />
-                    <Button Content="{helpers:Loc Nav.Refresh}" Click="OnRefreshClick" />
-                    <Button x:Name="ThemeToggleButton" Click="OnThemeToggleClick" Margin="8,0,0,0" ToolTip="{helpers:Loc App.ThemeToggleTooltip}" />
-                </StackPanel>
+        <Border Grid.Row="0" Background="{DynamicResource BrushBgSidebar}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1" Padding="14,10">
+            <Grid x:Name="HeaderGrid">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
                 <!-- Left: Branding, Active Profile Pill & BG3 Running Guard Pill -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Image Source="pack://application:,,,/Assets/app_icon.png"
-                           Width="34"
-                           Height="34"
+                           Width="32"
+                           Height="32"
                            RenderOptions.BitmapScalingMode="HighQuality"
                            VerticalAlignment="Center"
                            Margin="0,0,10,0" />
-                    <StackPanel Margin="0,0,18,0">
-                        <TextBlock Text="{helpers:Loc App.Title}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" />
-                        <TextBlock Text="{helpers:Loc App.Subtitle}" FontSize="11" Foreground="{DynamicResource BrushTextSecondary}" />
+                    <StackPanel Margin="0,0,14,0" VerticalAlignment="Center">
+                        <TextBlock Text="{helpers:Loc App.Title}" FontSize="15.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="AppSubtitleText" Text="{helpers:Loc App.Subtitle}" FontSize="11" Foreground="{DynamicResource BrushTextSecondary}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <Border Background="{DynamicResource BrushBadgeGreenBg}" BorderBrush="{DynamicResource BrushBadgeGreenBorder}" BorderThickness="1" CornerRadius="12" Padding="10,4" VerticalAlignment="Center">
-                        <TextBlock x:Name="ActiveProfilePillText" Foreground="{DynamicResource BrushGreen}" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock x:Name="ActiveProfilePillText"
+                                   Foreground="{DynamicResource BrushGreen}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="260" />
                     </Border>
                     <Border x:Name="Bg3RunningPill"
                             Background="{DynamicResource BrushBadgeCrimsonBg}"
@@ -58,37 +61,65 @@
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="10,4"
-                            Margin="10,0,0,0"
+                            Margin="8,0,0,0"
                             VerticalAlignment="Center"
                             Visibility="Collapsed"
                             ToolTip="{helpers:Loc App.Bg3RunningTooltip}">
                         <TextBlock x:Name="Bg3RunningPillText" Foreground="{DynamicResource BrushCrimson}" FontSize="12" FontWeight="SemiBold" />
                     </Border>
                 </StackPanel>
-            </DockPanel>
+
+                <!-- Right / Wrapped Row: Quick Profile Switcher, Refresh & Theme Toggle -->
+                <StackPanel x:Name="HeaderControlsPanel"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <Border x:Name="DropHintBorder" Background="{DynamicResource BrushBgDropHint}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" CornerRadius="4" Padding="10,4" Margin="0,0,12,0">
+                        <TextBlock Text="{helpers:Loc App.DropHint}" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" />
+                    </Border>
+                    <TextBlock x:Name="QuickSwitchLabel" Text="{helpers:Loc Nav.QuickSwitch}" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" Margin="0,0,6,0" />
+                    <ComboBox x:Name="QuickProfileCombo" Width="200" DisplayMemberPath="Name" Margin="0,0,6,0" />
+                    <Button x:Name="QuickSwitchButton" Content="{helpers:Loc Nav.Switch}" Style="{StaticResource AccentButton}" Click="OnQuickSwitchClick" Margin="0,0,8,0" />
+                    <Button x:Name="RefreshButton" Content="{helpers:Loc Nav.Refresh}" Click="OnRefreshClick" />
+                    <Button x:Name="ThemeToggleButton" Click="OnThemeToggleClick" Margin="8,0,0,0" ToolTip="{helpers:Loc App.ThemeToggleTooltip}" />
+                </StackPanel>
+            </Grid>
         </Border>
 
-        <!-- Body: Navigation Rail + Main Content -->
-        <Grid Grid.Row="1">
+        <!-- Body: Navigation Rail / Top Nav + Main Content -->
+        <Grid x:Name="BodyGrid" Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="230" />
+                <ColumnDefinition x:Name="NavColumn" Width="220" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left Sidebar -->
-            <Border Grid.Column="0" Background="{DynamicResource BrushBgSidebar}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,1,0">
+            <!-- Navigation Container (Left Sidebar in Wide/Medium; Top Bar in Narrow) -->
+            <Border x:Name="NavBorder"
+                    Grid.Row="0"
+                    Grid.RowSpan="2"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="1"
+                    Background="{DynamicResource BrushBgSidebar}"
+                    BorderBrush="{DynamicResource BrushBorder}"
+                    BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <Border DockPanel.Dock="Bottom" Padding="14,12" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
+                    <Border x:Name="SidebarFooterBorder" DockPanel.Dock="Bottom" Padding="14,12" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
                         <StackPanel>
                             <TextBlock Text="{helpers:Loc App.PortableMode}" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushAccentSoft}" />
                             <TextBlock x:Name="SidebarStatsText" Style="{StaticResource MutedCaption}" Margin="0,3,0,0" />
                         </StackPanel>
                     </Border>
 
-                    <StackPanel Margin="0,10,0,0">
+                    <StackPanel x:Name="NavItemsPanel" Orientation="Vertical" Margin="0,10,0,0">
                         <RadioButton x:Name="NavProfiles" Style="{StaticResource NavButton}" IsChecked="True" Checked="OnNavChecked">
                             <DockPanel LastChildFill="True">
-                                <Border DockPanel.Dock="Right" Background="{DynamicResource BrushBgElevated}" CornerRadius="10" Padding="7,1">
+                                <Border DockPanel.Dock="Right" Background="{DynamicResource BrushBgElevated}" CornerRadius="10" Padding="7,1" Margin="6,0,0,0">
                                     <TextBlock x:Name="NavProfilesCount" Text="0" FontSize="11" Foreground="{DynamicResource BrushTextSecondary}" />
                                 </Border>
                                 <TextBlock Text="{helpers:Loc Nav.Profiles}" VerticalAlignment="Center" />
@@ -97,7 +128,7 @@
 
                         <RadioButton x:Name="NavReview" Style="{StaticResource NavButton}" Checked="OnNavChecked">
                             <DockPanel LastChildFill="True">
-                                <Border x:Name="NavReviewAlertBadge" DockPanel.Dock="Right" Background="{DynamicResource BrushBadgeCrimsonBg}" CornerRadius="10" Padding="7,1" Visibility="Collapsed">
+                                <Border x:Name="NavReviewAlertBadge" DockPanel.Dock="Right" Background="{DynamicResource BrushBadgeCrimsonBg}" CornerRadius="10" Padding="7,1" Margin="6,0,0,0" Visibility="Collapsed">
                                     <TextBlock x:Name="NavReviewAlertCount" Text="0" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource BrushCrimson}" />
                                 </Border>
                                 <TextBlock Text="{helpers:Loc Nav.Review}" VerticalAlignment="Center" />
@@ -106,7 +137,7 @@
 
                         <RadioButton x:Name="NavLibrary" Style="{StaticResource NavButton}" Checked="OnNavChecked">
                             <DockPanel LastChildFill="True">
-                                <Border DockPanel.Dock="Right" Background="{DynamicResource BrushBgElevated}" CornerRadius="10" Padding="7,1">
+                                <Border DockPanel.Dock="Right" Background="{DynamicResource BrushBgElevated}" CornerRadius="10" Padding="7,1" Margin="6,0,0,0">
                                     <TextBlock x:Name="NavLibraryCount" Text="0" FontSize="11" Foreground="{DynamicResource BrushTextSecondary}" />
                                 </Border>
                                 <TextBlock Text="{helpers:Loc Nav.Library}" VerticalAlignment="Center" />
@@ -121,7 +152,7 @@
             </Border>
 
             <!-- Active View Host -->
-            <ContentControl x:Name="ViewHost" Grid.Column="1" />
+            <ContentControl x:Name="ViewHost" Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Grid.ColumnSpan="1" />
         </Grid>
 
         <!-- Collapsible Activity Log Drawer -->
@@ -142,7 +173,8 @@
         <Border Grid.Row="3" Background="{DynamicResource BrushBgSidebar}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Padding="14,6">
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="{helpers:Loc Nav.ActivityLog}" Padding="10,3" FontSize="11.5" Click="OnToggleActivityLogClick" />
-                <TextBlock x:Name="StatusBarText" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" Text="{helpers:Loc App.Ready}" />
+                <TextBlock x:Name="StatusBarStatsText" DockPanel.Dock="Right" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" Margin="0,0,12,0" Visibility="Collapsed" />
+                <TextBlock x:Name="StatusBarText" VerticalAlignment="Center" Style="{StaticResource MutedCaption}" TextTrimming="CharacterEllipsis" Text="{helpers:Loc App.Ready}" />
             </DockPanel>
         </Border>
 
@@ -156,17 +188,19 @@
                     BorderThickness="2"
                     CornerRadius="12"
                     Background="{DynamicResource BrushBgCard}"
-                    Margin="48"
-                    Padding="36"
+                    Margin="24"
+                    Padding="24"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center">
                 <StackPanel HorizontalAlignment="Center">
-                    <TextBlock Text="{helpers:Loc App.DropOverlayTitle}" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource BrushAccentSoft}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{helpers:Loc App.DropOverlayTitle}" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource BrushAccentSoft}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
                     <TextBlock Text="{helpers:Loc App.DropOverlaySubtitle}"
                                Style="{StaticResource MutedCaption}"
                                FontSize="13"
                                Margin="0,8,0,0"
-                               HorizontalAlignment="Center" />
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center" />
                 </StackPanel>
             </Border>
         </Border>
@@ -178,7 +212,9 @@
                 Visibility="Collapsed">
             <Border Style="{StaticResource CardBorder}"
                     BorderBrush="{DynamicResource BrushAccent}"
-                    Width="440"
+                    MinWidth="300"
+                    MaxWidth="440"
+                    Margin="24"
                     Padding="24"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center">

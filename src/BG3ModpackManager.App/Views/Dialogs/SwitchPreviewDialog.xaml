@@ -6,8 +6,8 @@
         Style="{StaticResource AppWindowStyle}"
         Width="860"
         Height="610"
-        MinWidth="680"
-        MinHeight="460"
+        MinWidth="580"
+        MinHeight="440"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
     <Grid Margin="18">
@@ -20,51 +20,51 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock x:Name="HeadingText" Style="{StaticResource SectionTitle}" />
-            <TextBlock x:Name="SubheadingText" Style="{StaticResource MutedCaption}" Margin="0,3,0,0" />
+            <TextBlock x:Name="HeadingText" Style="{StaticResource SectionTitle}" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="SubheadingText" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,3,0,0" />
         </StackPanel>
 
         <!-- Summary KPI Cards -->
         <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,12">
             <Border Style="{StaticResource CardBorder}" Margin="0,0,8,0">
                 <StackPanel>
-                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiShared}" FontSize="11" Foreground="{DynamicResource BrushGreen}" FontWeight="SemiBold" />
+                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiShared}" FontSize="11" Foreground="{DynamicResource BrushGreen}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="SharedCountText" FontSize="20" FontWeight="Bold" Margin="0,4,0,2" />
-                    <TextBlock x:Name="SharedSavedText" Style="{StaticResource MutedCaption}" />
+                    <TextBlock x:Name="SharedSavedText" Style="{StaticResource MutedCaption}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource CardBorder}" Margin="0,0,8,0">
                 <StackPanel>
-                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiVault}" FontSize="11" Foreground="{DynamicResource BrushAmber}" FontWeight="SemiBold" />
+                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiVault}" FontSize="11" Foreground="{DynamicResource BrushAmber}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="DeactivateCountText" FontSize="20" FontWeight="Bold" Margin="0,4,0,2" />
-                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiVaultSub}" Style="{StaticResource MutedCaption}" />
+                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiVaultSub}" Style="{StaticResource MutedCaption}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource CardBorder}" Margin="0,0,8,0">
                 <StackPanel>
-                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiActivate}" FontSize="11" Foreground="{DynamicResource BrushBlue}" FontWeight="SemiBold" />
+                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiActivate}" FontSize="11" Foreground="{DynamicResource BrushBlue}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="ActivateCountText" FontSize="20" FontWeight="Bold" Margin="0,4,0,2" />
-                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiActivateSub}" Style="{StaticResource MutedCaption}" />
+                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiActivateSub}" Style="{StaticResource MutedCaption}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource CardBorder}">
                 <StackPanel>
-                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiIssues}" FontSize="11" Foreground="{DynamicResource BrushCrimson}" FontWeight="SemiBold" />
+                    <TextBlock Text="{helpers:Loc Dialog.SwitchPreview.KpiIssues}" FontSize="11" Foreground="{DynamicResource BrushCrimson}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="IssueCountText" FontSize="20" FontWeight="Bold" Margin="0,4,0,2" />
-                    <TextBlock x:Name="IssueNoteText" Style="{StaticResource MutedCaption}" />
+                    <TextBlock x:Name="IssueNoteText" Style="{StaticResource MutedCaption}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Border>
         </UniformGrid>
 
         <!-- Filter Buttons -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
-            <RadioButton x:Name="FilterChanges" Content="{helpers:Loc Dialog.SwitchPreview.FilterChanges}" IsChecked="True" Checked="OnFilterChanged" Margin="0,0,16,0" />
-            <RadioButton x:Name="FilterAll" Content="{helpers:Loc Dialog.SwitchPreview.FilterAll}" Checked="OnFilterChanged" />
-        </StackPanel>
+        <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
+            <RadioButton x:Name="FilterChanges" Content="{helpers:Loc Dialog.SwitchPreview.FilterChanges}" IsChecked="True" Checked="OnFilterChanged" Margin="0,2,16,2" />
+            <RadioButton x:Name="FilterAll" Content="{helpers:Loc Dialog.SwitchPreview.FilterAll}" Checked="OnFilterChanged" Margin="0,2,0,2" />
+        </WrapPanel>
 
         <DataGrid x:Name="PlanGrid" Grid.Row="3" IsReadOnly="True">
             <DataGrid.Columns>
-                <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Action" Width="165">
+                <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Action" Width="155">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Border Background="{Binding BadgeBackground}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
@@ -73,25 +73,26 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.ModName" Binding="{Binding DisplayName}" Width="1.5*" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Payload" Binding="{Binding PayloadLabel}" Width="1.3*" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Size" Binding="{Binding SizeText}" Width="85" />
-                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Reason" Binding="{Binding Reason}" Width="2*" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.ModName" Binding="{Binding DisplayName}" Width="1.5*" MinWidth="130" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Payload" Binding="{Binding PayloadLabel}" Width="1.3*" MinWidth="110" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Size" Binding="{Binding SizeText}" Width="80" />
+                <DataGridTextColumn helpers:LocHelper.HeaderKey="Dialog.SwitchPreview.Col.Reason" Binding="{Binding Reason}" Width="2*" MinWidth="150" />
             </DataGrid.Columns>
         </DataGrid>
 
         <DockPanel Grid.Row="4" Margin="0,12,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="{helpers:Loc Common.Cancel}" MinWidth="90" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
+                <Button x:Name="ConfirmButton" Content="{helpers:Loc Dialog.SwitchPreview.BtnConfirm}" MinWidth="155" Padding="14,6" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnConfirmClick" />
+            </StackPanel>
             <TextBlock x:Name="ConflictBanner"
-                       DockPanel.Dock="Left"
                        VerticalAlignment="Center"
                        Foreground="{DynamicResource BrushCrimson}"
                        FontWeight="SemiBold"
+                       TextWrapping="Wrap"
+                       Margin="0,0,12,0"
                        Visibility="Collapsed"
                        Text="{helpers:Loc Dialog.SwitchPreview.ConflictBanner}" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="{helpers:Loc Common.Cancel}" Width="95" IsCancel="True" Margin="0,0,8,0" />
-                <Button x:Name="ConfirmButton" Content="{helpers:Loc Dialog.SwitchPreview.BtnConfirm}" Width="175" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnConfirmClick" />
-            </StackPanel>
         </DockPanel>
     </Grid>
 </Window>

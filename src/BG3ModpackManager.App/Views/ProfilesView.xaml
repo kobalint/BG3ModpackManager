@@ -1,16 +1,22 @@
 <UserControl x:Class="BG3ModpackManager.App.Views.ProfilesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:helpers="clr-namespace:BG3ModpackManager.App.Helpers">
-    <Grid Margin="16">
+             xmlns:helpers="clr-namespace:BG3ModpackManager.App.Helpers"
+             SizeChanged="OnViewSizeChanged">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="310" />
-            <ColumnDefinition Width="16" />
+            <ColumnDefinition x:Name="LeftPaneColumn" Width="280" MinWidth="240" MaxWidth="400" />
+            <ColumnDefinition x:Name="SplitterColumn" Width="10" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
         <!-- Left Column: Profiles List -->
-        <Border Grid.Column="0" Style="{StaticResource CardBorder}" Padding="12">
+        <Border x:Name="ProfilesListCard" Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Grid.ColumnSpan="1" Style="{StaticResource CardBorder}" Padding="12">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -18,7 +24,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                <StackPanel Grid.Row="0" Margin="0,0,0,8">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="{helpers:Loc Profiles.Title}" />
                     <TextBlock Style="{StaticResource MutedCaption}" Text="{helpers:Loc Profiles.Subtitle}" TextWrapping="Wrap" Margin="0,2,0,0" />
                 </StackPanel>
@@ -49,26 +55,29 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <StackPanel Grid.Row="2" Margin="0,10,0,0">
-                    <UniformGrid Columns="2" Margin="0,0,0,6">
-                        <Button Content="{helpers:Loc Profiles.Btn.CaptureActive}" Click="OnCaptureCurrentClick" Margin="0,0,4,0" ToolTip="{helpers:Loc Profiles.Btn.CaptureTooltip}" />
-                        <Button Content="{helpers:Loc Profiles.Btn.NewEmpty}" Click="OnNewEmptyClick" Margin="4,0,0,0" />
-                    </UniformGrid>
-                    <UniformGrid Columns="2" Margin="0,0,0,6">
-                        <Button Content="{helpers:Loc Profiles.Btn.ImportJson}" Click="OnImportJsonClick" Margin="0,0,4,0" ToolTip="{helpers:Loc Profiles.Btn.ImportJsonTooltip}" />
-                        <Button Content="{helpers:Loc Profiles.Btn.ImportModpack}" Click="OnImportModpackClick" Margin="4,0,0,0" ToolTip="{helpers:Loc Profiles.Btn.ImportModpackTooltip}" />
-                    </UniformGrid>
-                    <UniformGrid Columns="2" Margin="0,0,0,6">
-                        <Button x:Name="DuplicateButton" Content="{helpers:Loc Profiles.Btn.Duplicate}" Click="OnDuplicateClick" Margin="0,0,4,0" />
-                        <Button x:Name="RenameButton" Content="{helpers:Loc Profiles.Btn.Rename}" Click="OnRenameClick" Margin="4,0,0,0" />
-                    </UniformGrid>
-                    <Button x:Name="DeleteButton" Content="{helpers:Loc Profiles.Btn.Delete}" Style="{StaticResource DangerButton}" Click="OnDeleteClick" />
-                </StackPanel>
+                <UniformGrid x:Name="ProfileActionsGrid" Grid.Row="2" Columns="2" Margin="0,8,0,0">
+                    <Button Content="{helpers:Loc Profiles.Btn.CaptureActive}" Click="OnCaptureCurrentClick" Padding="8,5" Margin="2" ToolTip="{helpers:Loc Profiles.Btn.CaptureTooltip}" />
+                    <Button Content="{helpers:Loc Profiles.Btn.NewEmpty}" Click="OnNewEmptyClick" Padding="8,5" Margin="2" />
+                    <Button Content="{helpers:Loc Profiles.Btn.ImportJson}" Click="OnImportJsonClick" Padding="8,5" Margin="2" ToolTip="{helpers:Loc Profiles.Btn.ImportJsonTooltip}" />
+                    <Button Content="{helpers:Loc Profiles.Btn.ImportModpack}" Click="OnImportModpackClick" Padding="8,5" Margin="2" ToolTip="{helpers:Loc Profiles.Btn.ImportModpackTooltip}" />
+                    <Button x:Name="DuplicateButton" Content="{helpers:Loc Profiles.Btn.Duplicate}" Click="OnDuplicateClick" Padding="8,5" Margin="2" />
+                    <Button x:Name="RenameButton" Content="{helpers:Loc Profiles.Btn.Rename}" Click="OnRenameClick" Padding="8,5" Margin="2" />
+                    <Button x:Name="DeleteButton" Content="{helpers:Loc Profiles.Btn.Delete}" Style="{StaticResource DangerButton}" Click="OnDeleteClick" Padding="8,5" Margin="2" />
+                </UniformGrid>
             </Grid>
         </Border>
 
+        <GridSplitter x:Name="ProfilesSplitter"
+                      Grid.Row="0"
+                      Grid.RowSpan="3"
+                      Grid.Column="1"
+                      Width="10"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      ShowsPreview="False" />
+
         <!-- Right Column: Selected Profile Details -->
-        <Grid Grid.Column="2">
+        <Grid x:Name="ProfileDetailsGrid" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" Grid.ColumnSpan="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -77,17 +86,18 @@
             </Grid.RowDefinitions>
 
             <!-- Profile Header Card -->
-            <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,12">
-                <DockPanel>
-                    <Button x:Name="SwitchProfileButton"
-                            DockPanel.Dock="Right"
-                            Style="{StaticResource AccentButton}"
-                            Content="{helpers:Loc Profiles.Btn.SwitchToThis}"
-                            Padding="18,10"
-                            FontSize="13.5"
-                            VerticalAlignment="Center"
-                            Click="OnSwitchToSelectedClick" />
-                    <StackPanel Margin="0,0,16,0">
+            <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
                         <DockPanel>
                             <Border x:Name="SelectedActivePill"
                                     DockPanel.Dock="Left"
@@ -99,21 +109,34 @@
                                     Visibility="Collapsed">
                                 <TextBlock Text="{helpers:Loc Profiles.CurrentlyActivePill}" Foreground="{DynamicResource BrushGreen}" FontSize="11" FontWeight="Bold" />
                             </Border>
-                            <TextBlock x:Name="SelectedProfileTitle" Style="{StaticResource SectionTitle}" />
+                            <TextBlock x:Name="SelectedProfileTitle" Style="{StaticResource SectionTitle}" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
-                        <TextBlock x:Name="SelectedProfileSubtitle" Style="{StaticResource MutedCaption}" Margin="0,4,0,6" />
-                        <WrapPanel>
-                            <Button x:Name="LinkJsonButton" Content="{helpers:Loc Profiles.Btn.LinkJson}" Click="OnLinkJsonClick" Padding="10,4" Margin="0,0,6,0" />
-                            <Button x:Name="SyncJsonButton" Content="{helpers:Loc Profiles.Btn.SyncJson}" Click="OnSyncJsonClick" Padding="10,4" Margin="0,0,6,0" />
-                            <Button x:Name="ExportJsonButton" Content="{helpers:Loc Profiles.Btn.ExportJson}" Click="OnExportJsonClick" Padding="10,4" Margin="0,0,6,0" />
+                        <TextBlock x:Name="SelectedProfileSubtitle" Style="{StaticResource MutedCaption}" TextWrapping="Wrap" Margin="0,4,0,6" />
+                        <WrapPanel Margin="0,2,0,0">
+                            <Button x:Name="LinkJsonButton" Content="{helpers:Loc Profiles.Btn.LinkJson}" Click="OnLinkJsonClick" Padding="10,4" Margin="0,0,6,6" />
+                            <Button x:Name="SyncJsonButton" Content="{helpers:Loc Profiles.Btn.SyncJson}" Click="OnSyncJsonClick" Padding="10,4" Margin="0,0,6,6" />
+                            <Button x:Name="ExportJsonButton" Content="{helpers:Loc Profiles.Btn.ExportJson}" Click="OnExportJsonClick" Padding="10,4" Margin="0,0,6,6" />
                             <Button x:Name="ExportArchiveButton"
                                     Content="{helpers:Loc Profiles.Btn.ExportArchive}"
                                     Click="OnExportArchiveClick"
                                     Padding="10,4"
+                                    Margin="0,0,0,6"
                                     ToolTip="{helpers:Loc Profiles.Btn.ExportArchiveTooltip}" />
                         </WrapPanel>
                     </StackPanel>
-                </DockPanel>
+
+                    <Button x:Name="SwitchProfileButton"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Style="{StaticResource AccentButton}"
+                            Content="{helpers:Loc Profiles.Btn.SwitchToThis}"
+                            Padding="16,9"
+                            FontSize="13.5"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right"
+                            Margin="8,0,0,0"
+                            Click="OnSwitchToSelectedClick" />
+                </Grid>
             </Border>
 
             <!-- Filter Bar -->
@@ -125,10 +148,10 @@
             <!-- Profile Mods Grid -->
             <DataGrid x:Name="ProfileModsGrid" Grid.Row="2" IsReadOnly="True" MouseDoubleClick="OnInspectModClick">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="#" Binding="{Binding OrderNumber}" Width="45" />
-                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.ModName" Binding="{Binding DisplayName}" Width="2*" />
-                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Type" Binding="{Binding KindLabel}" Width="90" />
-                    <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Profiles.Col.Override" Width="105">
+                    <DataGridTextColumn Header="#" Binding="{Binding OrderNumber}" Width="42" />
+                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.ModName" Binding="{Binding DisplayName}" Width="2*" MinWidth="150" />
+                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Type" Binding="{Binding KindLabel}" Width="85" />
+                    <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Profiles.Col.Override" Width="100">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Border Background="{Binding OverrideBg}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" ToolTip="{Binding OverrideTooltip}">
@@ -137,7 +160,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Profiles.Col.Location" Width="90">
+                    <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Profiles.Col.Location" Width="86">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Border Background="{Binding LocationBg}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
@@ -146,10 +169,10 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Version" Binding="{Binding VersionText}" Width="85" />
-                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Size" Binding="{Binding SizeText}" Width="80" />
-                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Files" Binding="{Binding FileSummary}" Width="1.5*" />
-                    <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Profiles.Col.Vault" Width="105">
+                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Version" Binding="{Binding VersionText}" Width="78" />
+                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Size" Binding="{Binding SizeText}" Width="76" />
+                    <DataGridTextColumn helpers:LocHelper.HeaderKey="Profiles.Col.Files" Binding="{Binding FileSummary}" Width="1.5*" MinWidth="115" />
+                    <DataGridTemplateColumn helpers:LocHelper.HeaderKey="Profiles.Col.Vault" Width="100">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Button Content="{Binding VaultActionLabel}"
@@ -165,13 +188,18 @@
 
             <!-- Footer Actions -->
             <DockPanel Grid.Row="3" Margin="0,10,0,0">
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                    <Button x:Name="AddModsButton" Content="{helpers:Loc Profiles.Btn.AddMods}" Style="{StaticResource AccentButton}" Click="OnAddModsClick" Margin="0,0,8,0" />
-                    <Button x:Name="RemoveModButton" Content="{helpers:Loc Profiles.Btn.RemoveMod}" Click="OnRemoveModClick" Margin="0,0,8,0" />
-                    <Button x:Name="MoveUpButton" Content="{helpers:Loc Profiles.Btn.MoveUp}" Click="OnMoveUpClick" Margin="0,0,6,0" />
-                    <Button x:Name="MoveDownButton" Content="{helpers:Loc Profiles.Btn.MoveDown}" Click="OnMoveDownClick" />
-                </StackPanel>
-                <Button x:Name="InspectModButton" HorizontalAlignment="Right" Content="{helpers:Loc Profiles.Btn.InspectSelected}" Click="OnInspectModClick" />
+                <Button x:Name="InspectModButton"
+                        DockPanel.Dock="Right"
+                        VerticalAlignment="Top"
+                        Margin="8,0,0,6"
+                        Content="{helpers:Loc Profiles.Btn.InspectSelected}"
+                        Click="OnInspectModClick" />
+                <WrapPanel Orientation="Horizontal">
+                    <Button x:Name="AddModsButton" Content="{helpers:Loc Profiles.Btn.AddMods}" Style="{StaticResource AccentButton}" Click="OnAddModsClick" Margin="0,0,6,6" />
+                    <Button x:Name="RemoveModButton" Content="{helpers:Loc Profiles.Btn.RemoveMod}" Click="OnRemoveModClick" Margin="0,0,6,6" />
+                    <Button x:Name="MoveUpButton" Content="{helpers:Loc Profiles.Btn.MoveUp}" Click="OnMoveUpClick" Margin="0,0,6,6" />
+                    <Button x:Name="MoveDownButton" Content="{helpers:Loc Profiles.Btn.MoveDown}" Click="OnMoveDownClick" Margin="0,0,0,6" />
+                </WrapPanel>
             </DockPanel>
         </Grid>
     </Grid>
