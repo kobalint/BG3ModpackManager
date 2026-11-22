@@ -1,0 +1,438 @@
+using System.Windows;
+using System.Windows.Threading;
+using BG3ModpackManager.App.Services;
+using BG3ModpackManager.App.Views;
+using BG3ModpackManager.Core.Models;
+using BG3ModpackManager.Core.Services;
+
+namespace BG3ModpackManager.App;
+
+public partial class MainWindow : Window
+{
+    private readonly AppState _state;
+    private readonly ProfilesView _profilesView;
+    private readonly LoadOrderReviewView _reviewView;
+    private readonly LibraryView _libraryView;
+    private readonly SettingsView _settingsView;
+    private readonly DispatcherTimer _gameProcessTimer;
+
+    public MainWindow(AppState state)
+    {
+        InitializeComponent();
+        _state = state;
+
+        _profilesView = new ProfilesView(state);
+        _reviewView = new LoadOrderReviewView(state);
+        _libraryView = new LibraryView(state);
+        _settingsView = new SettingsView(state);
+
+        _libraryView.ArchiveImportBatchRequested += paths => _ = HandleDroppedPathsAsync(paths);
+
+        ActivityLogList.ItemsSource = _state.ActivityLog;
+        _state.StateChanged += RefreshChrome;
+        _state.StatusMessagePublished += msg => Dispatcher.Invoke(() => StatusBarText.Text = msg);
+        _state.BusyStateChanged += (isBusy, msg) => Dispatcher.Invoke(() =>
+        {
+            BusyOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+            BusyMessageText.Text = string.IsNullOrWhiteSpace(msg) ? Loc.T("App.PleaseWait") : msg;
+        });
+
+        ThemeManager.ThemeChanged += OnThemeChanged;
+        LocalizationManager.Instance.LanguageChanged += OnLanguageChanged;
+
+        _gameProcessTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _gameProcessTimer.Tick += (_, _) => UpdateGameRunningIndicator();
+
+        ViewHost.Content = _profilesView;
+        RefreshChrome();
+        UpdateGameRunningIndicator();
+        UpdateThemeToggleButton();
+
+        foreach (string warn in LocalizationManager.Instance.LoadWarnings)
+        {
+            _state.Log(warn);
+        }
+
+        Loaded += OnWindowLoaded;
+        Closed += (_, _) =>
+        {
+            _gameProcessTimer.Stop();
+            ThemeManager.ThemeChanged -= OnThemeChanged;
+            LocalizationManager.Instance.LanguageChanged -= OnLanguageChanged;
+        };
+    }
+
+    private async void OnWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        _gameProcessTimer.Start();
+        await RunInitialScanAsync();
+    }
+
+    private void OnThemeChanged(AppTheme _) => UpdateThemeToggleButton();
+
+    private void OnLanguageChanged()
+    {
+        RefreshChrome();
+        UpdateGameRunningIndicator();
+        UpdateThemeToggleButton();
+    }
+
+    private void UpdateThemeToggleButton()
+    {
+        ThemeToggleButton.Content = ThemeManager.CurrentTheme == AppTheme.Dark
+            ? Loc.T("App.ThemeToLight")
+            : Loc.T("App.ThemeToDark");
+    }
+
+    private void OnThemeToggleClick(object sender, RoutedEventArgs e)
+    {
+        AppTheme next = ThemeManager.CurrentTheme == AppTheme.Dark ? AppTheme.Light : AppTheme.Dark;
+        _state.Settings.Theme = next;
+        _state.Store.SaveSettings(_state.Settings);
+        ThemeManager.ApplyTheme(next);
+        string themeLabel = next == AppTheme.Dark ? Loc.T("Settings.Theme.Dark") : Loc.T("Settings.Theme.Light");
+        _state.Log(Loc.F("Settings.ThemeLog", themeLabel));
+    }
+
+    private void UpdateGameRunningIndicator()
+    {
+        IReadOnlyList<RunningGameProcess> running = GameProcessGuard.GetRunningGameProcesses();
+        if (running.Count == 0)
+        {
+            Bg3RunningPill.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        string labels = string.Join(" + ", running.Select(p => p.ProcessName).Distinct(StringComparer.OrdinalIgnoreCase));
+        Bg3RunningPillText.Text = Loc.F("App.Bg3RunningFormat", labels);
+        Bg3RunningPill.Visibility = Visibility.Visible;
+    }
+
+    private async Task RunInitialScanAsync()
+    {
+        try
+        {
+            _state.SetBusy(true, Loc.T("App.ScanningMods"));
+            var progress = new Progress<string>(msg => _state.SetBusy(true, msg));
+            var (adopted, updated) = await Task.Run(() => ModLibraryService.ScanAndAdoptActiveModsAsync(
+                _state.Settings,
+                _state.Db,
+                _state.Cache,
+                progress));
+
+            _state.SaveLibraryAndCache();
+            _state.Log(Loc.F("App.StartupScanLog", _state.Db.Mods.Count, adopted, updated));
+            _state.NotifyStateChanged();
+
+            await _reviewView.LoadOrRefreshInitialAuditAsync();
+        }
+        catch (Exception ex)
+        {
+            _state.Log(Loc.F("App.StartupScanWarning", ex.Message));
+        }
+        finally
+        {
+            _state.SetBusy(false);
+        }
+    }
+
+    private void RefreshChrome()
+    {
+        ModProfile? activeProfile = _state.Db.Profiles.FirstOrDefault(p => p.Id == _state.Db.ActiveProfileId);
+        ActiveProfilePillText.Text = Loc.F(
+            "App.ActiveProfileFormat",
+            activeProfile is not null ? activeProfile.Name : Loc.T("App.ActiveProfileNone"));
+
+        var orderedProfiles = _state.Db.Profiles
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        QuickProfileCombo.ItemsSource = orderedProfiles;
+        if (QuickProfileCombo.SelectedItem is not ModProfile cur || !orderedProfiles.Any(p => p.Id == cur.Id))
+        {
+            QuickProfileCombo.SelectedItem = activeProfile ?? orderedProfiles.FirstOrDefault();
+        }
+
+        QuickSwitchButton.IsEnabled = orderedProfiles.Count > 0;
+        NavProfilesCount.Text = _state.Db.Profiles.Count.ToString();
+        NavLibraryCount.Text = _state.Db.Mods.Count.ToString();
+        SidebarStatsText.Text = Loc.F("App.SidebarStatsFormat", _state.Db.Mods.Count, _state.Db.Profiles.Count);
+
+        int unlistedOverrides = _state.LatestAudit?.UnlistedOverrideCount ?? 0;
+        NavReviewAlertBadge.Visibility = unlistedOverrides > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NavReviewAlertCount.Text = unlistedOverrides.ToString();
+    }
+
+    private void OnNavChecked(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (NavProfiles.IsChecked == true)
+        {
+            ViewHost.Content = _profilesView;
+            _profilesView.RefreshView();
+        }
+        else if (NavReview.IsChecked == true)
+        {
+            ViewHost.Content = _reviewView;
+        }
+        else if (NavLibrary.IsChecked == true)
+        {
+            ViewHost.Content = _libraryView;
+            _libraryView.RefreshView();
+        }
+        else if (NavSettings.IsChecked == true)
+        {
+            ViewHost.Content = _settingsView;
+        }
+    }
+
+    private void OnQuickSwitchClick(object sender, RoutedEventArgs e)
+    {
+        if (QuickProfileCombo.SelectedItem is ModProfile target)
+        {
+            NavProfiles.IsChecked = true;
+            _profilesView.SwitchToProfile(target);
+        }
+    }
+
+    private async void OnRefreshClick(object sender, RoutedEventArgs e)
+    {
+        await RunInitialScanAsync();
+    }
+
+    private void OnToggleActivityLogClick(object sender, RoutedEventArgs e)
+    {
+        ActivityDrawer.Visibility = ActivityDrawer.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void OnWindowDragEnter(object sender, DragEventArgs e) => UpdateDragVisual(e);
+    private void OnWindowDragOver(object sender, DragEventArgs e) => UpdateDragVisual(e);
+
+    private void OnWindowDragLeave(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateDragVisual(DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effects = DragDropEffects.Copy;
+            DropOverlay.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+            DropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        e.Handled = true;
+    }
+
+    private async void OnWindowDrop(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length > 0)
+        {
+            await HandleDroppedPathsAsync(paths);
+        }
+    }
+
+    private async Task HandleDroppedPathsAsync(string[] paths)
+    {
+        var importedArchivePaths = new List<string>();
+
+        foreach (string path in paths)
+        {
+            if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase))
+            {
+                NavReview.IsChecked = true;
+                ViewHost.Content = _reviewView;
+                await _reviewView.AuditFileAsync(path);
+                continue;
+            }
+
+            if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".7z", StringComparison.OrdinalIgnoreCase))
+            {
+                bool isModpack = await Task.Run(() => ProfileImportService.IsExportedModpackArchiveAsync(path));
+                if (isModpack)
+                {
+                    NavProfiles.IsChecked = true;
+                    ViewHost.Content = _profilesView;
+                    if (await _profilesView.ImportModpackArchiveAsync(path))
+                    {
+                        importedArchivePaths.Add(path);
+                    }
+
+                    continue;
+                }
+            }
+
+            ArchiveImportPlan? plan = null;
+            try
+            {
+                string fileName = Path.GetFileName(path);
+                _state.SetBusy(true, Loc.F("App.InspectingDrop", fileName));
+                plan = await Task.Run(() => ArchiveImportService.InspectDropAsync(path, _state.Settings, _state.Db));
+                _state.SetBusy(false);
+
+                if (plan.Items.Count == 0)
+                {
+                    MessageBox.Show(this, Loc.F("App.EmptyPackageMsg", fileName), Loc.T("App.EmptyPackageTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+                    continue;
+                }
+
+                var dlg = new Views.Dialogs.ArchiveImportDialog(plan, _state.Db) { Owner = this };
+                if (dlg.ShowDialog() != true)
+                {
+                    continue;
+                }
+
+                string? selectedProfileId = dlg.SelectedProfileId;
+                bool installActiveNow = dlg.InstallActiveNow;
+
+                if (installActiveNow && !_state.EnsureGameClosedBeforeFileOps(this))
+                {
+                    _state.Log(Loc.F("App.ImportCancelledBg3Running", plan.SourceName));
+                    continue;
+                }
+
+                _state.SetBusy(true, Loc.F("App.ImportingDrop", plan.SourceName));
+                var progress = new Progress<string>(msg => _state.SetBusy(true, msg));
+                ArchiveImportResult result = await Task.Run(() => ArchiveImportService.CommitImportAsync(
+                    plan,
+                    selectedProfileId,
+                    installActiveNow,
+                    _state.Settings,
+                    _state.Db,
+                    progress));
+
+                _state.SaveLibraryAndCache();
+                _state.Log(Loc.F("App.ImportSummaryLog", plan.SourceName, result.ImportedModIds.Count, result.ReusedDuplicateModIds.Count));
+                foreach (string renameInfo in result.RenamedOriginalFiles)
+                {
+                    _state.Log(Loc.F("App.ImportBackupLog", renameInfo));
+                }
+
+                _state.NotifyStateChanged();
+
+                if (result.Errors.Count > 0)
+                {
+                    MessageBox.Show(this, string.Join("\n", result.Errors), Loc.T("App.ImportErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                else
+                {
+                    if ((result.ImportedModIds.Count > 0 || result.ReusedDuplicateModIds.Count > 0) &&
+                        ArchiveImportService.IsDeletableArchiveFile(path))
+                    {
+                        importedArchivePaths.Add(path);
+                    }
+
+                    if (result.Warnings.Count > 0)
+                    {
+                        MessageBox.Show(this, string.Join("\n", result.Warnings), Loc.T("App.ImportWarningsTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    Loc.F("App.DropImportErrorMsg", Path.GetFileName(path), ex.Message),
+                    Loc.T("App.DropImportErrorTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                _state.SetBusy(false);
+                if (plan is not null)
+                {
+                    ArchiveImportService.CleanupStaging(plan);
+                }
+            }
+        }
+
+        if (importedArchivePaths.Count > 0)
+        {
+            PromptDeleteImportedArchives(importedArchivePaths);
+        }
+    }
+
+    private void PromptDeleteImportedArchives(List<string> archivePaths)
+    {
+        List<string> unique = archivePaths
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(File.Exists)
+            .ToList();
+
+        if (unique.Count == 0)
+        {
+            return;
+        }
+
+        const int maxShown = 15;
+        string listPreview = string.Join("\n", unique.Take(maxShown).Select(p => $"• {Path.GetFileName(p)}"));
+        if (unique.Count > maxShown)
+        {
+            listPreview += Loc.F("App.MoreArchivesFormat", unique.Count - maxShown);
+        }
+
+        string msg = unique.Count == 1
+            ? Loc.F("App.DeleteArchiveSingleMsg", listPreview)
+            : Loc.F("App.DeleteArchiveMultiMsg", unique.Count, listPreview);
+
+        MessageBoxResult answer = MessageBox.Show(
+            this,
+            msg,
+            Loc.T("App.DeleteArchiveTitle"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        int deleted = 0;
+        var failed = new List<string>();
+        foreach (string p in unique)
+        {
+            try
+            {
+                if (File.Exists(p))
+                {
+                    File.Delete(p);
+                    deleted++;
+                }
+            }
+            catch (Exception ex)
+            {
+                failed.Add($"{Path.GetFileName(p)}: {ex.Message}");
+            }
+        }
+
+        _state.Log(Loc.F("App.DeleteArchiveLog", deleted));
+        if (failed.Count > 0)
+        {
+            MessageBox.Show(
+                this,
+                Loc.F("App.DeleteArchiveWarnMsg", deleted, string.Join("\n", failed)),
+                Loc.T("App.DeleteArchiveWarnTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+}

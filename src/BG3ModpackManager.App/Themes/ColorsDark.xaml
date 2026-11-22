@@ -1,0 +1,73 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Dark Mode Palette (Extracted from profile artwork: espresso/mahogany, twilight mauve, planet rose & Hussar crimson/emerald) -->
+    <SolidColorBrush x:Key="BrushBgWindow" Color="#1A1314" />
+    <SolidColorBrush x:Key="BrushBgSidebar" Color="#221819" />
+    <SolidColorBrush x:Key="BrushBgCard" Color="#2B1F21" />
+    <SolidColorBrush x:Key="BrushBgElevated" Color="#37282B" />
+    <SolidColorBrush x:Key="BrushBgInput" Color="#161011" />
+    <SolidColorBrush x:Key="BrushBgHover" Color="#463337" />
+    <SolidColorBrush x:Key="BrushBgPressed" Color="#261B1D" />
+    <SolidColorBrush x:Key="BrushBgListItem" Color="#241A1C" />
+    <SolidColorBrush x:Key="BrushBgDropHint" Color="#261B1D" />
+    <SolidColorBrush x:Key="BrushBgNavHover" Color="#312325" />
+    <SolidColorBrush x:Key="BrushBgNavChecked" Color="#3E2628" />
+    <SolidColorBrush x:Key="BrushBgDrawer" Color="#150F10" />
+
+    <SolidColorBrush x:Key="BrushBgGrid" Color="#1F1618" />
+    <SolidColorBrush x:Key="BrushBgGridRow" Color="#241A1C" />
+    <SolidColorBrush x:Key="BrushBgGridRowAlt" Color="#291E20" />
+    <SolidColorBrush x:Key="BrushBgGridHeader" Color="#312326" />
+    <SolidColorBrush x:Key="BrushBgGridLines" Color="#37282B" />
+    <SolidColorBrush x:Key="BrushBgGridHover" Color="#39282B" />
+    <SolidColorBrush x:Key="BrushBgGridSelected" Color="#4A2B2E" />
+
+    <SolidColorBrush x:Key="BrushBgComboPopup" Color="#2B1F21" />
+    <SolidColorBrush x:Key="BrushBgComboHighlight" Color="#3D2C30" />
+    <SolidColorBrush x:Key="BrushBgComboSelected" Color="#4D2F33" />
+
+    <SolidColorBrush x:Key="BrushBgOverlay" Color="#CC1A1314" />
+    <SolidColorBrush x:Key="BrushBgBusyOverlay" Color="#B8120C0D" />
+
+    <SolidColorBrush x:Key="BrushBorder" Color="#4B3639" />
+    <SolidColorBrush x:Key="BrushBorderHover" Color="#6D5055" />
+    <SolidColorBrush x:Key="BrushBorderFocus" Color="#CF8B88" />
+
+    <SolidColorBrush x:Key="BrushAccent" Color="#C8433B" />
+    <SolidColorBrush x:Key="BrushAccentHover" Color="#DB574F" />
+    <SolidColorBrush x:Key="BrushAccentPressed" Color="#A62119" />
+    <SolidColorBrush x:Key="BrushAccentForeground" Color="#FFF8F4" />
+    <SolidColorBrush x:Key="BrushAccentSoft" Color="#CF8B88" />
+
+    <SolidColorBrush x:Key="BrushTextPrimary" Color="#F7EFE9" />
+    <SolidColorBrush x:Key="BrushTextSecondary" Color="#C8B2B5" />
+    <SolidColorBrush x:Key="BrushTextMuted" Color="#927A7E" />
+
+    <SolidColorBrush x:Key="BrushGreen" Color="#34B871" />
+    <SolidColorBrush x:Key="BrushBadgeGreenBg" Color="#153324" />
+    <SolidColorBrush x:Key="BrushBadgeGreenBorder" Color="#236341" />
+
+    <SolidColorBrush x:Key="BrushAmber" Color="#E8A86B" />
+    <SolidColorBrush x:Key="BrushBadgeAmberBg" Color="#3D2818" />
+    <SolidColorBrush x:Key="BrushBadgeAmberBorder" Color="#7A4E2A" />
+
+    <SolidColorBrush x:Key="BrushStandaloneOvr" Color="#E0A39A" />
+    <SolidColorBrush x:Key="BrushBadgeStandaloneBg" Color="#402624" />
+
+    <SolidColorBrush x:Key="BrushCrimson" Color="#F06A63" />
+    <SolidColorBrush x:Key="BrushBadgeCrimsonBg" Color="#471A1A" />
+    <SolidColorBrush x:Key="BrushBadgeCrimsonBorder" Color="#8A2B26" />
+
+    <SolidColorBrush x:Key="BrushBlue" Color="#9EA6DF" />
+    <SolidColorBrush x:Key="BrushBadgeBlueBg" Color="#25263D" />
+
+    <SolidColorBrush x:Key="BrushBadgeNeutralBg" Color="#332528" />
+    <SolidColorBrush x:Key="BrushBadgeNeutralFg" Color="#C8B2B5" />
+
+    <SolidColorBrush x:Key="BrushDangerBg" Color="#4D1D1B" />
+    <SolidColorBrush x:Key="BrushDangerHover" Color="#662522" />
+    <SolidColorBrush x:Key="BrushDangerFg" Color="#FFD0CC" />
+    <SolidColorBrush x:Key="BrushDangerBorder" Color="#A62119" />
+
+</ResourceDictionary>
