@@ -62,4 +62,8 @@ public sealed class ArchiveImportResult
     public List<string> RenamedOriginalFiles { get; set; } = new();
     public List<string> Errors { get; set; } = new();
     public List<string> Warnings { get; set; } = new();
+    public string? SyncedOrderJsonPath { get; set; }
+    public int SyncedOrderJsonCount { get; set; }
+    public bool SyncedModSettingsLsx { get; set; }
+    public int SyncedModSettingsLsxCount { get; set; }
 }

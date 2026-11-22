@@ -28,7 +28,24 @@ public sealed class JsonStore
 
     public AppSettings LoadSettings()
     {
-        return LoadOrDefault(SettingsPath, static () => new AppSettings());
+        if (!File.Exists(SettingsPath))
+        {
+            return new AppSettings
+            {
+                SettingsSchemaVersion = AppSettings.CurrentSettingsSchemaVersion,
+                SyncModSettingsLsxOnSwitch = true
+            };
+        }
+
+        AppSettings loaded = LoadOrDefault(SettingsPath, static () => new AppSettings());
+        if (loaded.SettingsSchemaVersion < AppSettings.CurrentSettingsSchemaVersion)
+        {
+            loaded.SyncModSettingsLsxOnSwitch = true;
+            loaded.SettingsSchemaVersion = AppSettings.CurrentSettingsSchemaVersion;
+            SaveSettings(loaded);
+        }
+
+        return loaded;
     }
 
     public void SaveSettings(AppSettings settings)

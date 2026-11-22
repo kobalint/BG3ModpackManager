@@ -755,12 +755,30 @@ public static class ModLibraryService
             FileTransactionHelper.PruneEmptyParentDirectories(path, stopRoot);
         }
 
+        var affectedProfiles = new List<ModProfile>();
         foreach (ModProfile p in db.Profiles)
         {
-            p.ModIds.RemoveAll(id => string.Equals(id, mod.Id, StringComparison.OrdinalIgnoreCase));
+            if (p.ModIds.RemoveAll(id => string.Equals(id, mod.Id, StringComparison.OrdinalIgnoreCase)) > 0)
+            {
+                p.UpdatedAtUtc = DateTime.UtcNow;
+                affectedProfiles.Add(p);
+            }
         }
 
         db.Mods.Remove(mod);
+
+        foreach (ModProfile affectedProfile in affectedProfiles)
+        {
+            try
+            {
+                WriteProfileLoadOrderFiles(affectedProfile, settings, db);
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"Updated profile '{affectedProfile.Name}', but failed syncing load order files: {ex.Message}");
+            }
+        }
+
         return new ModUninstallResult(removedCount, restoredOriginals, warnings);
     }
 
@@ -1526,6 +1544,220 @@ public static class ModLibraryService
         string fileName = Path.GetFileName(trimmed);
         string fileKey = string.IsNullOrWhiteSpace(fileName) ? string.Empty : $"file:{fileName}";
         return (fullKey, fileKey);
+    }
+
+    public sealed record LoadOrderSyncResult(
+        bool JsonWritten,
+        string? JsonPath,
+        int JsonEntryCount,
+        bool LsxWritten,
+        string? LsxPath,
+        int LsxEntryCount);
+
+    /// <summary>
+    /// Inserts a mod into a profile, placing orderable PAK/Hybrid mods right before any trailing
+    /// loose/standalone companion mods and appending loose/standalone mods at the end.
+    /// </summary>
+    public static void InsertModIntoProfile(ModProfile profile, string modId, LibraryDatabase db)
+    {
+        if (profile.ModIds.Contains(modId, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+        if (modById.TryGetValue(modId, out ModEntry? insertedMod) && !IsJsonCompanionMod(insertedMod))
+        {
+            int insertIndex = profile.ModIds.Count;
+            while (insertIndex > 0)
+            {
+                string prevId = profile.ModIds[insertIndex - 1];
+                if (modById.TryGetValue(prevId, out ModEntry? prevMod) && IsJsonCompanionMod(prevMod))
+                {
+                    insertIndex--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            profile.ModIds.Insert(insertIndex, modId);
+        }
+        else
+        {
+            profile.ModIds.Add(modId);
+        }
+
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Moves one or more selected mods (preserving their relative order) immediately before or after <paramref name="targetModId"/>.
+    /// </summary>
+    public static bool ReorderProfileMods(
+        ModProfile profile,
+        IReadOnlyList<string> modIdsToMove,
+        string targetModId,
+        bool insertAfter)
+    {
+        if (modIdsToMove.Count == 0 || string.IsNullOrWhiteSpace(targetModId))
+        {
+            return false;
+        }
+
+        var moveSet = new HashSet<string>(modIdsToMove, StringComparer.OrdinalIgnoreCase);
+        if (moveSet.Contains(targetModId))
+        {
+            return false;
+        }
+
+        var moving = profile.ModIds.Where(id => moveSet.Contains(id)).ToList();
+        if (moving.Count == 0)
+        {
+            return false;
+        }
+
+        var remaining = profile.ModIds.Where(id => !moveSet.Contains(id)).ToList();
+        int targetIdx = remaining.FindIndex(id => string.Equals(id, targetModId, StringComparison.OrdinalIgnoreCase));
+        if (targetIdx < 0)
+        {
+            return false;
+        }
+
+        int insertIdx = insertAfter ? targetIdx + 1 : targetIdx;
+        remaining.InsertRange(insertIdx, moving);
+
+        if (remaining.SequenceEqual(profile.ModIds, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        profile.ModIds = remaining;
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
+    /// Shifts one or more selected mods up (delta &lt; 0) or down (delta &gt; 0) by one position.
+    /// </summary>
+    public static bool MoveProfileModsByDelta(
+        ModProfile profile,
+        IReadOnlyList<string> modIdsToMove,
+        int delta)
+    {
+        if (delta == 0 || modIdsToMove.Count == 0 || profile.ModIds.Count <= 1)
+        {
+            return false;
+        }
+
+        var moveSet = new HashSet<string>(modIdsToMove, StringComparer.OrdinalIgnoreCase);
+        var list = new List<string>(profile.ModIds);
+
+        if (delta < 0)
+        {
+            for (int i = 1; i < list.Count; i++)
+            {
+                if (moveSet.Contains(list[i]) && !moveSet.Contains(list[i - 1]))
+                {
+                    (list[i], list[i - 1]) = (list[i - 1], list[i]);
+                }
+            }
+        }
+        else
+        {
+            for (int i = list.Count - 2; i >= 0; i--)
+            {
+                if (moveSet.Contains(list[i]) && !moveSet.Contains(list[i + 1]))
+                {
+                    (list[i], list[i + 1]) = (list[i + 1], list[i]);
+                }
+            }
+        }
+
+        if (list.SequenceEqual(profile.ModIds, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        profile.ModIds = list;
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
+    /// Writes a profile's linked BG3ModManager .json load order (updating companion mod links)
+    /// and updates BG3's modsettings.lsx if the profile is active and LSX syncing is enabled.
+    /// </summary>
+    public static LoadOrderSyncResult WriteProfileLoadOrderFiles(
+        ModProfile profile,
+        AppSettings settings,
+        LibraryDatabase db,
+        bool writeLinkedJson = true,
+        bool writeModSettingsLsxIfActive = true)
+    {
+        var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+        var seenUuids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var orderableMods = new List<ModEntry>();
+
+        foreach (string modId in profile.ModIds)
+        {
+            if (!modById.TryGetValue(modId, out ModEntry? mod))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(mod.Uuid) ||
+                !mod.HasMetaLsx ||
+                mod.EffectiveOverrideKind == OverrideKind.StandaloneOverride)
+            {
+                continue;
+            }
+
+            if (seenUuids.Add(mod.Uuid))
+            {
+                orderableMods.Add(mod);
+            }
+        }
+
+        bool jsonWritten = false;
+        string? jsonPath = null;
+        int jsonCount = 0;
+
+        if (writeLinkedJson && !string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        {
+            var entries = orderableMods
+                .Select(m => new Bg3OrderEntry { Uuid = m.Uuid!, Name = m.DisplayName })
+                .ToList();
+            Bg3LoadOrderService.SaveOrderJson(profile.LinkedOrderJsonPath, entries);
+            profile.LastSyncedFromJsonUtc = DateTime.UtcNow;
+            LinkCompanionModsToOrderJson(db, profile.LinkedOrderJsonPath, profile.ModIds);
+
+            jsonWritten = true;
+            jsonPath = profile.LinkedOrderJsonPath;
+            jsonCount = entries.Count;
+        }
+
+        bool lsxWritten = false;
+        string? lsxPath = null;
+        int lsxCount = 0;
+
+        if (writeModSettingsLsxIfActive &&
+            settings.SyncModSettingsLsxOnSwitch &&
+            !string.IsNullOrWhiteSpace(settings.ModSettingsLsxPath) &&
+            string.Equals(db.ActiveProfileId, profile.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            var activeOrderableMods = orderableMods
+                .Where(m => m.Location == ModLocation.Active)
+                .ToList();
+            Bg3LoadOrderService.WriteModSettingsLsx(settings.ModSettingsLsxPath, activeOrderableMods);
+
+            lsxWritten = true;
+            lsxPath = settings.ModSettingsLsxPath;
+            lsxCount = activeOrderableMods.Count;
+        }
+
+        return new LoadOrderSyncResult(jsonWritten, jsonPath, jsonCount, lsxWritten, lsxPath, lsxCount);
     }
 
     private static ModEntry ChooseProfileCandidate(Bg3OrderEntry entry, List<ModEntry> candidates)

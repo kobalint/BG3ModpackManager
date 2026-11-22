@@ -182,6 +182,7 @@ public static class ArchiveImportService
             }
 
             AssignToProfile(profile, hybrid.Id, db);
+            SyncAssignedProfileLoadOrder(profile, installActiveNow, settings, db, result);
             return result;
         }
 
@@ -294,6 +295,7 @@ public static class ArchiveImportService
             }
         }
 
+        SyncAssignedProfileLoadOrder(profile, installActiveNow, settings, db, result);
         return result;
     }
 
@@ -1105,12 +1107,43 @@ public static class ArchiveImportService
 
         if (!profile.ModIds.Contains(modId, StringComparer.OrdinalIgnoreCase))
         {
-            profile.ModIds.Add(modId);
-            profile.UpdatedAtUtc = DateTime.UtcNow;
+            ModLibraryService.InsertModIntoProfile(profile, modId, db);
             if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
             {
                 ModLibraryService.LinkCompanionModsToOrderJson(db, profile.LinkedOrderJsonPath, profile.ModIds);
             }
+        }
+    }
+
+    private static void SyncAssignedProfileLoadOrder(
+        ModProfile? profile,
+        bool installActiveNow,
+        AppSettings settings,
+        LibraryDatabase db,
+        ArchiveImportResult result)
+    {
+        if (profile is null || (result.ImportedModIds.Count == 0 && result.ReusedDuplicateModIds.Count == 0))
+        {
+            return;
+        }
+
+        try
+        {
+            ModLibraryService.LoadOrderSyncResult sync = ModLibraryService.WriteProfileLoadOrderFiles(
+                profile,
+                settings,
+                db,
+                writeLinkedJson: true,
+                writeModSettingsLsxIfActive: installActiveNow);
+
+            result.SyncedOrderJsonPath = sync.JsonPath;
+            result.SyncedOrderJsonCount = sync.JsonEntryCount;
+            result.SyncedModSettingsLsx = sync.LsxWritten;
+            result.SyncedModSettingsLsxCount = sync.LsxEntryCount;
+        }
+        catch (Exception ex)
+        {
+            result.Warnings.Add($"Imported mod(s), but failed updating load order files: {ex.Message}");
         }
     }
 }

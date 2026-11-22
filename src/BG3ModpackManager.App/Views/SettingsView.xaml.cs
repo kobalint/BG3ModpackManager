@@ -320,6 +320,7 @@ public partial class SettingsView : UserControl
     {
         AppSettings detected = PathAutoDetector.DetectDefaults(new AppSettings
         {
+            SettingsSchemaVersion = _state.Settings.SettingsSchemaVersion,
             SwitchMode = OverridesOnlyModeRadio.IsChecked == true ? SwitchMode.OverridesAndDataOnly : SwitchMode.FullProfile,
             SyncModSettingsLsxOnSwitch = SyncLsxCheckBox.IsChecked == true,
             LastSelectedOrderJsonPath = _state.Settings.LastSelectedOrderJsonPath,

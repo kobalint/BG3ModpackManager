@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using BG3ModpackManager.App.Helpers;
 using BG3ModpackManager.App.Services;
@@ -68,12 +70,19 @@ public partial class ProfilesView : UserControl
                 : Loc.F("Common.TrackedFilesCountFormat", Mod.TrackedFiles.Count));
     }
 
+    private const string InternalModReorderDragFormat = "BG3ModpackManager.ProfileModReorder";
+
     private readonly AppState _state;
     private string? _selectedProfileId;
     private bool _suppressSelectionChanged;
     private bool? _lastStackedMode;
     private bool? _lastCompactHeader;
     private double _savedLeftPaneWidth = 280;
+    private Point _dragStartPoint;
+    private ProfileModRow? _dragSourceRow;
+    private bool _deferSingleSelectOnMouseUp;
+    private bool _isDraggingRows;
+    private DateTime _lastAutoScrollUtc = DateTime.MinValue;
 
     public ProfilesView(AppState state)
     {
@@ -793,9 +802,15 @@ public partial class ProfilesView : UserControl
             .ToList();
 
         Bg3LoadOrderService.SaveOrderJson(dlg.FileName, entries);
+        if (string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        {
+            profile.LinkedOrderJsonPath = dlg.FileName;
+        }
+
         ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, dlg.FileName, profile.ModIds);
         _state.SaveLibraryAndCache();
         _state.Log(Loc.F("Profiles.ExportJson.Log", profile.Name, entries.Count, dlg.FileName));
+        _state.NotifyStateChanged();
         MessageBox.Show(
             Window.GetWindow(this),
             Loc.F("Profiles.ExportJson.CompleteMsg", entries.Count, dlg.FileName),
@@ -1022,73 +1037,475 @@ public partial class ProfilesView : UserControl
             return;
         }
 
-        profile.ModIds.AddRange(dlg.SelectedModIds);
-        profile.UpdatedAtUtc = DateTime.UtcNow;
-        if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        foreach (string id in dlg.SelectedModIds)
         {
-            ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
+            ModLibraryService.InsertModIntoProfile(profile, id, _state.Db);
         }
 
-        ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
-        _state.SaveLibraryAndCache();
-        _state.Log(Loc.F("Profiles.AddMods.Log", dlg.SelectedModIds.Count, profile.Name));
-        _state.NotifyStateChanged();
+        CommitProfileLoadOrderEdit(
+            profile,
+            restoredSelectionIds: dlg.SelectedModIds,
+            logMessage: Loc.F("Profiles.AddMods.Log", dlg.SelectedModIds.Count, profile.Name));
     }
 
     private void OnRemoveModClick(object sender, RoutedEventArgs e)
     {
         ModProfile? profile = GetSelectedProfile();
-        if (profile is null || ProfileModsGrid.SelectedItem is not ProfileModRow row)
+        if (profile is null)
         {
             return;
         }
 
-        profile.ModIds.RemoveAll(id => string.Equals(id, row.ModId, StringComparison.OrdinalIgnoreCase));
-        profile.UpdatedAtUtc = DateTime.UtcNow;
-        if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
+        var selectedRows = ProfileModsGrid.SelectedItems.OfType<ProfileModRow>().ToList();
+        if (selectedRows.Count == 0 && ProfileModsGrid.SelectedItem is ProfileModRow singleRow)
         {
-            ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
+            selectedRows.Add(singleRow);
         }
 
-        ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
-        _state.SaveLibraryAndCache();
-        _state.Log(Loc.F("Profiles.RemoveMod.Log", row.DisplayName, profile.Name));
-        _state.NotifyStateChanged();
+        if (selectedRows.Count == 0)
+        {
+            return;
+        }
+
+        var removeSet = new HashSet<string>(selectedRows.Select(r => r.ModId), StringComparer.OrdinalIgnoreCase);
+        profile.ModIds.RemoveAll(id => removeSet.Contains(id));
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+
+        string removedLabel = selectedRows.Count == 1 ? selectedRows[0].DisplayName : $"{selectedRows.Count} mods";
+        CommitProfileLoadOrderEdit(
+            profile,
+            restoredSelectionIds: null,
+            logMessage: Loc.F("Profiles.RemoveMod.Log", removedLabel, profile.Name));
     }
 
-    private void OnMoveUpClick(object sender, RoutedEventArgs e) => MoveSelectedMod(-1);
-    private void OnMoveDownClick(object sender, RoutedEventArgs e) => MoveSelectedMod(1);
+    private void OnMoveUpClick(object sender, RoutedEventArgs e) => MoveSelectedMods(-1);
+    private void OnMoveDownClick(object sender, RoutedEventArgs e) => MoveSelectedMods(1);
 
-    private void MoveSelectedMod(int delta)
+    private void MoveSelectedMods(int delta)
     {
         ModProfile? profile = GetSelectedProfile();
-        if (profile is null || ProfileModsGrid.SelectedItem is not ProfileModRow row)
+        if (profile is null)
         {
             return;
         }
 
-        int idx = profile.ModIds.FindIndex(id => string.Equals(id, row.ModId, StringComparison.OrdinalIgnoreCase));
-        int newIdx = idx + delta;
-        if (idx < 0 || newIdx < 0 || newIdx >= profile.ModIds.Count)
+        var selectedIds = ProfileModsGrid.SelectedItems
+            .OfType<ProfileModRow>()
+            .Select(r => r.ModId)
+            .ToList();
+        if (selectedIds.Count == 0 && ProfileModsGrid.SelectedItem is ProfileModRow singleRow)
+        {
+            selectedIds.Add(singleRow.ModId);
+        }
+
+        if (selectedIds.Count == 0 || !ModLibraryService.MoveProfileModsByDelta(profile, selectedIds, delta))
         {
             return;
         }
 
-        (profile.ModIds[idx], profile.ModIds[newIdx]) = (profile.ModIds[newIdx], profile.ModIds[idx]);
-        profile.UpdatedAtUtc = DateTime.UtcNow;
+        CommitProfileLoadOrderEdit(
+            profile,
+            restoredSelectionIds: selectedIds,
+            logMessage: Loc.F("Profiles.Reorder.Log", selectedIds.Count, profile.Name));
+    }
+
+    private void CommitProfileLoadOrderEdit(
+        ModProfile profile,
+        IReadOnlyList<string>? restoredSelectionIds,
+        string logMessage)
+    {
         if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
         {
             ModLibraryService.LinkCompanionModsToOrderJson(_state.Db, profile.LinkedOrderJsonPath, profile.ModIds);
         }
 
         ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
-        _state.SaveLibraryAndCache();
-        RefreshSelectedProfileDetails();
 
-        if (ProfileModsGrid.ItemsSource is List<ProfileModRow> rows)
+        ModLibraryService.LoadOrderSyncResult? sync = null;
+        string? syncError = null;
+        try
         {
-            ProfileModsGrid.SelectedItem = rows.FirstOrDefault(r => r.ModId == row.ModId);
+            sync = ModLibraryService.WriteProfileLoadOrderFiles(profile, _state.Settings, _state.Db);
         }
+        catch (Exception ex)
+        {
+            syncError = ex.Message;
+        }
+
+        _state.SaveLibraryAndCache();
+        _state.Log(logMessage);
+        LogSyncResult(sync, syncError);
+        _state.NotifyStateChanged();
+        RestoreProfileGridSelection(restoredSelectionIds);
+    }
+
+    private void LogSyncResult(ModLibraryService.LoadOrderSyncResult? sync, string? syncError)
+    {
+        if (!string.IsNullOrWhiteSpace(syncError))
+        {
+            _state.Log(Loc.F("Profiles.LoadOrderSync.ErrorLog", syncError));
+            return;
+        }
+
+        if (sync is null)
+        {
+            return;
+        }
+
+        if (sync.JsonWritten && sync.LsxWritten && !string.IsNullOrWhiteSpace(sync.JsonPath))
+        {
+            _state.Log(Loc.F(
+                "Profiles.LoadOrderSync.JsonAndLsxLog",
+                Path.GetFileName(sync.JsonPath),
+                sync.JsonEntryCount,
+                sync.LsxEntryCount));
+        }
+        else if (sync.JsonWritten && !string.IsNullOrWhiteSpace(sync.JsonPath))
+        {
+            _state.Log(Loc.F(
+                "Profiles.LoadOrderSync.JsonOnlyLog",
+                Path.GetFileName(sync.JsonPath),
+                sync.JsonEntryCount));
+        }
+        else if (sync.LsxWritten)
+        {
+            _state.Log(Loc.F("Profiles.LoadOrderSync.LsxOnlyLog", sync.LsxEntryCount));
+        }
+    }
+
+    private void RestoreProfileGridSelection(IReadOnlyList<string>? modIds)
+    {
+        if (modIds is null || modIds.Count == 0 || ProfileModsGrid.ItemsSource is not List<ProfileModRow> rows)
+        {
+            return;
+        }
+
+        var idSet = new HashSet<string>(modIds, StringComparer.OrdinalIgnoreCase);
+        ProfileModsGrid.SelectedItems.Clear();
+        ProfileModRow? firstMatch = null;
+        foreach (ProfileModRow row in rows)
+        {
+            if (idSet.Contains(row.ModId))
+            {
+                ProfileModsGrid.SelectedItems.Add(row);
+                firstMatch ??= row;
+            }
+        }
+
+        if (firstMatch is not null)
+        {
+            ProfileModsGrid.ScrollIntoView(firstMatch);
+        }
+    }
+
+    private void OnProfileGridPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Up)
+        {
+            e.Handled = true;
+            MoveSelectedMods(-1);
+        }
+        else if (e.Key == Key.Down)
+        {
+            e.Handled = true;
+            MoveSelectedMods(1);
+        }
+    }
+
+    private void OnProfileGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragSourceRow = null;
+        _deferSingleSelectOnMouseUp = false;
+        _isDraggingRows = false;
+
+        if (e.ClickCount >= 2)
+        {
+            return;
+        }
+
+        if (e.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (FindVisualParent<ButtonBase>(source) is not null ||
+            FindVisualParent<ScrollBar>(source) is not null ||
+            FindVisualParent<DataGridColumnHeader>(source) is not null)
+        {
+            return;
+        }
+
+        DataGridRow? rowContainer = FindVisualParent<DataGridRow>(source);
+        if (rowContainer?.Item is not ProfileModRow clickedRow)
+        {
+            return;
+        }
+
+        _dragStartPoint = e.GetPosition(ProfileModsGrid);
+        _dragSourceRow = clickedRow;
+
+        bool noModifiers = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == 0;
+        if (noModifiers &&
+            ProfileModsGrid.SelectedItems.Count > 1 &&
+            ProfileModsGrid.SelectedItems.Contains(clickedRow))
+        {
+            _deferSingleSelectOnMouseUp = true;
+            e.Handled = true;
+        }
+    }
+
+    private void OnProfileGridPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_deferSingleSelectOnMouseUp && !_isDraggingRows && _dragSourceRow is not null)
+        {
+            ProfileModsGrid.SelectedItems.Clear();
+            ProfileModsGrid.SelectedItem = _dragSourceRow;
+        }
+
+        _dragSourceRow = null;
+        _deferSingleSelectOnMouseUp = false;
+        _isDraggingRows = false;
+    }
+
+    private void OnProfileGridPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _dragSourceRow is null || _isDraggingRows)
+        {
+            return;
+        }
+
+        ModProfile? profile = GetSelectedProfile();
+        if (profile is null)
+        {
+            return;
+        }
+
+        Vector diff = e.GetPosition(ProfileModsGrid) - _dragStartPoint;
+        if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var selectedSet = ProfileModsGrid.SelectedItems
+            .OfType<ProfileModRow>()
+            .Select(r => r.ModId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        selectedSet.Add(_dragSourceRow.ModId);
+
+        List<string> draggedIds = profile.ModIds
+            .Where(id => selectedSet.Contains(id))
+            .ToList();
+        if (draggedIds.Count == 0)
+        {
+            return;
+        }
+
+        _isDraggingRows = true;
+        try
+        {
+            var data = new DataObject(InternalModReorderDragFormat, draggedIds);
+            DragDrop.DoDragDrop(ProfileModsGrid, data, DragDropEffects.Move);
+        }
+        finally
+        {
+            _isDraggingRows = false;
+            _dragSourceRow = null;
+            _deferSingleSelectOnMouseUp = false;
+            HideDropIndicator();
+        }
+    }
+
+    private void OnProfileGridDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(InternalModReorderDragFormat))
+        {
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+
+        ScrollViewer? sv = FindVisualChild<ScrollViewer>(ProfileModsGrid);
+        DataGridColumnHeadersPresenter? header = FindVisualChild<DataGridColumnHeadersPresenter>(ProfileModsGrid);
+        double headerHeight = header?.ActualHeight ?? 28;
+        Point posInGrid = e.GetPosition(ProfileModsGrid);
+
+        if (sv is not null && (DateTime.UtcNow - _lastAutoScrollUtc).TotalMilliseconds >= 55)
+        {
+            if (posInGrid.Y >= headerHeight && posInGrid.Y < headerHeight + 34 && sv.VerticalOffset > 0)
+            {
+                sv.LineUp();
+                _lastAutoScrollUtc = DateTime.UtcNow;
+            }
+            else if (posInGrid.Y > ProfileModsGrid.ActualHeight - 34 && posInGrid.Y <= ProfileModsGrid.ActualHeight)
+            {
+                sv.LineDown();
+                _lastAutoScrollUtc = DateTime.UtcNow;
+            }
+        }
+
+        if (TryResolveDropTarget(e, out _, out _, out double indicatorY))
+        {
+            DropIndicatorLine.Margin = new Thickness(0, Math.Max(0, indicatorY - 1.25), 0, 0);
+            DropIndicatorLine.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            HideDropIndicator();
+        }
+    }
+
+    private void OnProfileGridDragLeave(object sender, DragEventArgs e)
+    {
+        Point pos = e.GetPosition(ProfileModsGrid);
+        if (pos.X < 0 || pos.Y < 0 || pos.X > ProfileModsGrid.ActualWidth || pos.Y > ProfileModsGrid.ActualHeight)
+        {
+            HideDropIndicator();
+        }
+    }
+
+    private void OnProfileGridDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(InternalModReorderDragFormat))
+        {
+            return;
+        }
+
+        HideDropIndicator();
+        e.Handled = true;
+
+        if (e.Data.GetData(InternalModReorderDragFormat) is not List<string> draggedIds || draggedIds.Count == 0)
+        {
+            return;
+        }
+
+        ModProfile? profile = GetSelectedProfile();
+        if (profile is null)
+        {
+            return;
+        }
+
+        if (!TryResolveDropTarget(e, out ProfileModRow? targetRow, out bool insertAfter, out _) || targetRow is null)
+        {
+            return;
+        }
+
+        if (!ModLibraryService.ReorderProfileMods(profile, draggedIds, targetRow.ModId, insertAfter))
+        {
+            return;
+        }
+
+        CommitProfileLoadOrderEdit(
+            profile,
+            restoredSelectionIds: draggedIds,
+            logMessage: Loc.F("Profiles.Reorder.Log", draggedIds.Count, profile.Name));
+    }
+
+    private bool TryResolveDropTarget(
+        DragEventArgs e,
+        out ProfileModRow? targetRow,
+        out bool insertAfter,
+        out double indicatorY)
+    {
+        targetRow = null;
+        insertAfter = false;
+        indicatorY = 0;
+
+        if (ProfileModsGrid.ItemsSource is not List<ProfileModRow> rows || rows.Count == 0)
+        {
+            return false;
+        }
+
+        DataGridColumnHeadersPresenter? header = FindVisualChild<DataGridColumnHeadersPresenter>(ProfileModsGrid);
+        double headerBottom = header is not null
+            ? header.TranslatePoint(new Point(0, header.ActualHeight), ProfileModsGridContainer).Y
+            : 28;
+        double maxBottom = Math.Max(headerBottom, ProfileModsGridContainer.ActualHeight - 3);
+
+        Point posInGrid = e.GetPosition(ProfileModsGrid);
+        HitTestResult? hit = VisualTreeHelper.HitTest(ProfileModsGrid, posInGrid);
+        DataGridRow? hitRow = FindVisualParent<DataGridRow>(hit?.VisualHit);
+
+        if (hitRow?.Item is ProfileModRow row)
+        {
+            Point rowTopLeft = hitRow.TranslatePoint(new Point(0, 0), ProfileModsGridContainer);
+            insertAfter = e.GetPosition(hitRow).Y >= hitRow.ActualHeight / 2.0;
+            indicatorY = Math.Clamp(insertAfter ? rowTopLeft.Y + hitRow.ActualHeight : rowTopLeft.Y, headerBottom, maxBottom);
+            targetRow = row;
+            return true;
+        }
+
+        Point posInContainer = e.GetPosition(ProfileModsGridContainer);
+        if (posInContainer.Y <= headerBottom)
+        {
+            targetRow = rows[0];
+            insertAfter = false;
+            indicatorY = headerBottom;
+            return true;
+        }
+
+        targetRow = rows[^1];
+        insertAfter = true;
+        if (ProfileModsGrid.ItemContainerGenerator.ContainerFromItem(targetRow) is DataGridRow lastRowContainer)
+        {
+            double lastBottom = lastRowContainer.TranslatePoint(new Point(0, lastRowContainer.ActualHeight), ProfileModsGridContainer).Y;
+            indicatorY = Math.Clamp(lastBottom, headerBottom, maxBottom);
+        }
+        else
+        {
+            indicatorY = maxBottom;
+        }
+
+        return true;
+    }
+
+    private void HideDropIndicator()
+    {
+        DropIndicatorLine.Visibility = Visibility.Collapsed;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            T? nested = FindVisualChild<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void OnInspectModClick(object sender, RoutedEventArgs e)

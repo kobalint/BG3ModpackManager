@@ -439,6 +439,19 @@ public static class ProfileImportService
         if (options.InstallActiveNow && options.SetAsActiveProfile)
         {
             db.ActiveProfileId = profile.Id;
+            try
+            {
+                ModLibraryService.WriteProfileLoadOrderFiles(
+                    profile,
+                    settings,
+                    db,
+                    writeLinkedJson: false,
+                    writeModSettingsLsxIfActive: true);
+            }
+            catch (Exception ex)
+            {
+                result.Warnings.Add($"Imported modpack '{profile.Name}', but failed syncing modsettings.lsx: {ex.Message}");
+            }
         }
 
         result.CreatedProfile = profile;

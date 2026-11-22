@@ -527,19 +527,18 @@ public static class ProfileSwitchService
             ModLibraryService.ReconcileDiskState(settings, db);
             store.SaveLibrary(db);
 
-            if (settings.SyncModSettingsLsxOnSwitch && !string.IsNullOrWhiteSpace(settings.ModSettingsLsxPath))
+            ModProfile? targetProfile = db.Profiles.FirstOrDefault(p => p.Id == plan.TargetProfileId);
+            if (targetProfile is not null)
             {
-                ModProfile? targetProfile = db.Profiles.FirstOrDefault(p => p.Id == plan.TargetProfileId);
-                if (targetProfile is not null)
+                ModLibraryService.LoadOrderSyncResult sync = ModLibraryService.WriteProfileLoadOrderFiles(
+                    targetProfile,
+                    settings,
+                    db,
+                    writeLinkedJson: false,
+                    writeModSettingsLsxIfActive: true);
+                if (sync.LsxWritten)
                 {
-                    var orderedMods = targetProfile.ModIds
-                        .Select(id => modById.TryGetValue(id, out ModEntry? m) ? m : null)
-                        .Where(m => m is not null)
-                        .Cast<ModEntry>()
-                        .ToList();
-
-                    Bg3LoadOrderService.WriteModSettingsLsx(settings.ModSettingsLsxPath, orderedMods);
-                    result.LogLines.Add($"Synced modsettings.lsx ({orderedMods.Count(m => m.HasMetaLsx)} XML entries).");
+                    result.LogLines.Add($"Synced modsettings.lsx ({sync.LsxEntryCount} XML entries).");
                 }
             }
 

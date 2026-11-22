@@ -176,7 +176,8 @@ internal static class ProfileSwitchTests
     private static async Task TestModSettingsLsxSyncWithBackupAsync()
     {
         using var sandbox = new TempSandbox();
-        sandbox.Settings.SyncModSettingsLsxOnSwitch = true;
+        TestAssert.True(new AppSettings().SyncModSettingsLsxOnSwitch, "AppSettings.SyncModSettingsLsxOnSwitch defaults to true");
+        TestAssert.True(sandbox.Settings.SyncModSettingsLsxOnSwitch, "Sandbox Settings inherits default SyncModSettingsLsxOnSwitch = true without manual flip");
         var cache = new PakMetadataCache();
 
         Directory.CreateDirectory(Path.GetDirectoryName(sandbox.Settings.ModSettingsLsxPath)!);
@@ -218,12 +219,29 @@ internal static class ProfileSwitchTests
 
         SwitchPlan plan = await ProfileSwitchService.BuildSwitchPlanAsync(profile, sandbox.Settings, sandbox.Db, cache);
         SwitchExecutionResult res = await ProfileSwitchService.ExecuteSwitchPlanAsync(plan, sandbox.Settings, sandbox.Db, cache, sandbox.Store);
-        TestAssert.True(res.Success, "Switch with LSX sync succeeded");
+        TestAssert.True(res.Success, "Switch with default LSX sync succeeded");
         TestAssert.True(File.Exists(sandbox.Settings.ModSettingsLsxPath + ".bak"), "Backup .bak file must be created");
 
         List<ModSettingsEntry> lsxEntries = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
-        TestAssert.Equal(1, lsxEntries.Count, "1 non-base mod written to modsettings.lsx");
+        TestAssert.Equal(1, lsxEntries.Count, "1 non-base mod written to modsettings.lsx by default");
         TestAssert.EqualIgnoreCase(modUuid, lsxEntries[0].Uuid, "Written UUID matches");
+
+        // Verify one-time schema upgrade on legacy settings.json and respect for explicit uncheck on schema v2
+        var store = new JsonStore(Path.Combine(sandbox.Root, "legacy_store"));
+        Directory.CreateDirectory(store.DataDirectory);
+        await File.WriteAllTextAsync(store.SettingsPath, """
+            {
+              "SyncModSettingsLsxOnSwitch": false
+            }
+            """);
+        AppSettings upgraded = store.LoadSettings();
+        TestAssert.True(upgraded.SyncModSettingsLsxOnSwitch, "Legacy settings.json without SettingsSchemaVersion upgrades SyncModSettingsLsxOnSwitch to true once");
+        TestAssert.Equal(AppSettings.CurrentSettingsSchemaVersion, upgraded.SettingsSchemaVersion, "SettingsSchemaVersion upgraded to CurrentSettingsSchemaVersion");
+
+        upgraded.SyncModSettingsLsxOnSwitch = false;
+        store.SaveSettings(upgraded);
+        AppSettings reloadedExplicitOff = store.LoadSettings();
+        TestAssert.False(reloadedExplicitOff.SyncModSettingsLsxOnSwitch, "Explicit user opt-out on SettingsSchemaVersion 2 is preserved across reload");
     }
 
     private static void AssertSingleCopyInvariant(TempSandbox sandbox)

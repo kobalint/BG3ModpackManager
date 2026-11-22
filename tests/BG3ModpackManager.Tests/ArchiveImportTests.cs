@@ -16,6 +16,7 @@ internal static class ArchiveImportTests
         await TestNativeModLoaderOriginalBackupRestoreAndUninstallAsync();
         await TestReimportRepairsMissingAndOverwrittenLooseAndPakModsAsync();
         await TestDeeplyNestedBinAndGeneratedWithPakImportAsync();
+        await TestImportAndDragReorderAutoSyncBg3MmJsonAndLsxAsync();
         await TestZipSlipRejectedAsync();
         TestDeletableArchiveExtensionDetection();
     }
@@ -662,6 +663,159 @@ internal static class ArchiveImportTests
                 ArchiveImportService.CleanupStaging(plan);
             }
         }
+    }
+
+    private static async Task TestImportAndDragReorderAutoSyncBg3MmJsonAndLsxAsync()
+    {
+        using var sandbox = new TempSandbox();
+        var cache = new PakMetadataCache();
+
+        string uuidA = "aaaaaaaa-0001-0001-0001-000000000001";
+        string uuidB = "bbbbbbbb-0002-0002-0002-000000000002";
+        string uuidC = "cccccccc-0003-0003-0003-000000000003";
+
+        TestPakBuilder.CreatePakV18(Path.Combine(sandbox.Settings.ModsFolder, "ModA.pak"), new[]
+        {
+            ("Mods/ModA/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("Mod A", uuidA, "ModA")), TestPakBuilder.PayloadCompression.None)
+        });
+        await ModLibraryService.ScanAndAdoptActiveModsAsync(sandbox.Settings, sandbox.Db, cache);
+        ModEntry modA = sandbox.Db.Mods.Single(m => m.Uuid == uuidA);
+
+        string loosePath = Path.Combine(sandbox.Settings.GameFolder, "bin", "NativeMods", "CameraLoose.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(loosePath)!);
+        await File.WriteAllBytesAsync(loosePath, new byte[] { 1, 2, 3, 4 });
+        var looseMod = new ModEntry
+        {
+            Id = "loose-cam-01",
+            Kind = ModKind.LooseGame,
+            DisplayName = "Camera Loose",
+            ContentHash = await HashService.ComputeFileSha256Async(loosePath),
+            Location = ModLocation.Active,
+            TrackedFiles = new List<TrackedFileRecord>
+            {
+                new()
+                {
+                    Target = TrackedFileTarget.GameFolder,
+                    RelativePath = "bin/NativeMods/CameraLoose.dll",
+                    FileSizeBytes = 4,
+                    Sha256 = await HashService.ComputeFileSha256Async(loosePath)
+                }
+            }
+        };
+        sandbox.Db.Mods.Add(looseMod);
+
+        string orderJsonPath = Path.Combine(sandbox.Settings.OrdersFolder, "TestOrder.json");
+        Bg3LoadOrderService.SaveOrderJson(orderJsonPath, new[]
+        {
+            new Bg3OrderEntry { Uuid = uuidA, Name = "Mod A" }
+        });
+
+        var profile = new ModProfile
+        {
+            Name = "Synced Setup",
+            LinkedOrderJsonPath = orderJsonPath,
+            ModIds = new List<string> { modA.Id, looseMod.Id }
+        };
+        sandbox.Db.Profiles.Add(profile);
+        sandbox.Db.ActiveProfileId = profile.Id;
+        ModLibraryService.LinkCompanionModsToOrderJson(sandbox.Db, orderJsonPath, profile.ModIds);
+
+        // 1. Import Mod B directly into active linked profile -> must insert before looseMod and auto-write JSON + modsettings.lsx
+        string srcB = Path.Combine(sandbox.Root, "import_b");
+        TestPakBuilder.CreatePakV18(Path.Combine(srcB, "ModB.pak"), new[]
+        {
+            ("Mods/ModB/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("Mod B", uuidB, "ModB")), TestPakBuilder.PayloadCompression.None)
+        });
+        string zipB = Path.Combine(sandbox.Root, "ModB.zip");
+        ZipFile.CreateFromDirectory(srcB, zipB);
+
+        ArchiveImportPlan planB = await ArchiveImportService.InspectDropAsync(zipB, sandbox.Settings, sandbox.Db);
+        try
+        {
+            ArchiveImportResult resB = await ArchiveImportService.CommitImportAsync(planB, profile.Id, installActiveNow: true, sandbox.Settings, sandbox.Db);
+            TestAssert.Equal(0, resB.Errors.Count, "Import ModB succeeds");
+            TestAssert.Equal(orderJsonPath, resB.SyncedOrderJsonPath, "ArchiveImportResult records synced JSON path");
+            TestAssert.Equal(2, resB.SyncedOrderJsonCount, "Synced JSON has 2 PAK entries");
+            TestAssert.True(resB.SyncedModSettingsLsx, "ArchiveImportResult records synced modsettings.lsx");
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(planB);
+        }
+
+        ModEntry modB = sandbox.Db.Mods.Single(m => m.Uuid == uuidB);
+        TestAssert.Equal(3, profile.ModIds.Count, "Profile now has 3 mods (ModA, ModB, looseMod)");
+        TestAssert.Equal(modA.Id, profile.ModIds[0], "ModA at index 0");
+        TestAssert.Equal(modB.Id, profile.ModIds[1], "Newly imported PAK inserted before trailing loose mod (index 1)");
+        TestAssert.Equal(looseMod.Id, profile.ModIds[2], "Loose mod remains at the end");
+
+        Bg3LoadOrderFile jsonAfterB = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.Equal(2, jsonAfterB.Order.Count, "BG3MM JSON automatically updated on disk for F5 refresh");
+        TestAssert.EqualIgnoreCase(uuidA, jsonAfterB.Order[0].Uuid, "JSON[0] == ModA");
+        TestAssert.EqualIgnoreCase(uuidB, jsonAfterB.Order[1].Uuid, "JSON[1] == ModB");
+
+        List<ModSettingsEntry> lsxAfterB = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.Equal(2, lsxAfterB.Count, "modsettings.lsx automatically updated with ModB");
+        TestAssert.EqualIgnoreCase(uuidB, lsxAfterB[1].Uuid, "LSX[1] == ModB");
+        TestAssert.True(ModLibraryService.GetLinkedCompanionModIdsForOrderJson(sandbox.Db, orderJsonPath).Contains(looseMod.Id),
+            "Companion loose mod link preserved alongside newly imported ModB");
+
+        // 2. Import Mod C -> Add C, then test single & multi-select drag reorder + MoveProfileModsByDelta + sync
+        string srcC = Path.Combine(sandbox.Root, "import_c");
+        TestPakBuilder.CreatePakV18(Path.Combine(srcC, "ModC.pak"), new[]
+        {
+            ("Mods/ModC/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("Mod C", uuidC, "ModC")), TestPakBuilder.PayloadCompression.None)
+        });
+        string zipC = Path.Combine(sandbox.Root, "ModC.zip");
+        ZipFile.CreateFromDirectory(srcC, zipC);
+
+        ArchiveImportPlan planC = await ArchiveImportService.InspectDropAsync(zipC, sandbox.Settings, sandbox.Db);
+        try
+        {
+            await ArchiveImportService.CommitImportAsync(planC, profile.Id, installActiveNow: true, sandbox.Settings, sandbox.Db);
+        }
+        finally
+        {
+            ArchiveImportService.CleanupStaging(planC);
+        }
+
+        ModEntry modC = sandbox.Db.Mods.Single(m => m.Uuid == uuidC);
+        // Current order: [ModA, ModB, ModC, looseMod]
+        TestAssert.False(ModLibraryService.ReorderProfileMods(profile, new[] { modA.Id }, modA.Id, false), "Dropping mod onto itself is a no-op");
+        TestAssert.True(ModLibraryService.ReorderProfileMods(profile, new[] { modB.Id, modC.Id }, modA.Id, insertAfter: false),
+            "Multi-select block drag [ModB, ModC] before ModA succeeds");
+        TestAssert.Equal(modB.Id, profile.ModIds[0], "After multi-drag: [0] == ModB");
+        TestAssert.Equal(modC.Id, profile.ModIds[1], "After multi-drag: [1] == ModC");
+        TestAssert.Equal(modA.Id, profile.ModIds[2], "After multi-drag: [2] == ModA");
+
+        TestAssert.True(ModLibraryService.MoveProfileModsByDelta(profile, new[] { modA.Id }, -1), "MoveProfileModsByDelta shifts ModA up 1");
+        TestAssert.Equal(modA.Id, profile.ModIds[1], "After MoveUp: ModA at index 1 ([ModB, ModA, ModC, loose])");
+
+        ModLibraryService.LoadOrderSyncResult syncAfterReorder = ModLibraryService.WriteProfileLoadOrderFiles(profile, sandbox.Settings, sandbox.Db);
+        TestAssert.True(syncAfterReorder.JsonWritten && syncAfterReorder.LsxWritten, "WriteProfileLoadOrderFiles updates both JSON and LSX");
+
+        Bg3LoadOrderFile jsonReordered = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.EqualIgnoreCase(uuidB, jsonReordered.Order[0].Uuid, "Reordered JSON[0] == ModB");
+        TestAssert.EqualIgnoreCase(uuidA, jsonReordered.Order[1].Uuid, "Reordered JSON[1] == ModA");
+        TestAssert.EqualIgnoreCase(uuidC, jsonReordered.Order[2].Uuid, "Reordered JSON[2] == ModC");
+
+        List<ModSettingsEntry> lsxReordered = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.EqualIgnoreCase(uuidB, lsxReordered[0].Uuid, "Reordered LSX[0] == ModB");
+        TestAssert.EqualIgnoreCase(uuidA, lsxReordered[1].Uuid, "Reordered LSX[1] == ModA");
+        TestAssert.EqualIgnoreCase(uuidC, lsxReordered[2].Uuid, "Reordered LSX[2] == ModC");
+
+        // 3. Uninstall ModB -> removes from profile and updates linked JSON + modsettings.lsx automatically
+        ModLibraryService.ModUninstallResult uninstallRes = ModLibraryService.UninstallMod(modB, sandbox.Settings, sandbox.Db);
+        TestAssert.Equal(0, uninstallRes.Warnings.Count, "Uninstall ModB has no warnings");
+        Bg3LoadOrderFile jsonAfterUninstall = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.Equal(2, jsonAfterUninstall.Order.Count, "JSON has 2 entries after uninstalling ModB");
+        TestAssert.EqualIgnoreCase(uuidA, jsonAfterUninstall.Order[0].Uuid, "After uninstall: JSON[0] == ModA");
+        TestAssert.EqualIgnoreCase(uuidC, jsonAfterUninstall.Order[1].Uuid, "After uninstall: JSON[1] == ModC");
+
+        List<ModSettingsEntry> lsxAfterUninstall = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.Equal(2, lsxAfterUninstall.Count, "LSX updated automatically after uninstalling ModB");
+        TestAssert.EqualIgnoreCase(uuidA, lsxAfterUninstall[0].Uuid, "After uninstall: LSX[0] == ModA");
+        TestAssert.EqualIgnoreCase(uuidC, lsxAfterUninstall[1].Uuid, "After uninstall: LSX[1] == ModC");
     }
 
     private static void WriteZipEntry(ZipArchive archive, string entryName, byte[] data)

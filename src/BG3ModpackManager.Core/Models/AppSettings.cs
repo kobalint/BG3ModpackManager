@@ -44,13 +44,16 @@ public enum Bg3LaunchRenderer
 /// </summary>
 public sealed class AppSettings
 {
+    public const int CurrentSettingsSchemaVersion = 2;
+
+    public int SettingsSchemaVersion { get; set; } = 0;
     public string ModsFolder { get; set; } = string.Empty;
     public string GameFolder { get; set; } = string.Empty;
     public string DataFolder { get; set; } = string.Empty;
     public string OrdersFolder { get; set; } = string.Empty;
     public string VaultFolder { get; set; } = string.Empty;
     public SwitchMode SwitchMode { get; set; } = SwitchMode.FullProfile;
-    public bool SyncModSettingsLsxOnSwitch { get; set; } = false;
+    public bool SyncModSettingsLsxOnSwitch { get; set; } = true;
     public string ModSettingsLsxPath { get; set; } = string.Empty;
     public string? LastSelectedOrderJsonPath { get; set; }
     public string? LastExportFolder { get; set; }

@@ -12,9 +12,13 @@ public static class PathAutoDetector
     {
         bool detectLaunchRenderer = existing is null;
         var settings = existing is null
-            ? new AppSettings()
+            ? new AppSettings
+            {
+                SettingsSchemaVersion = AppSettings.CurrentSettingsSchemaVersion
+            }
             : new AppSettings
             {
+                SettingsSchemaVersion = existing.SettingsSchemaVersion,
                 ModsFolder = existing.ModsFolder,
                 GameFolder = existing.GameFolder,
                 DataFolder = existing.DataFolder,

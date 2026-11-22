@@ -573,17 +573,14 @@ public partial class MainWindow : Window
 
     private void UpdateDragVisual(DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
         {
-            e.Effects = DragDropEffects.Copy;
-            DropOverlay.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            e.Effects = DragDropEffects.None;
             DropOverlay.Visibility = Visibility.Collapsed;
+            return;
         }
 
+        e.Effects = DragDropEffects.Copy;
+        DropOverlay.Visibility = Visibility.Visible;
         e.Handled = true;
     }
 
@@ -673,6 +670,26 @@ public partial class MainWindow : Window
 
                 _state.SaveLibraryAndCache();
                 _state.Log(Loc.F("App.ImportSummaryLog", plan.SourceName, result.ImportedModIds.Count, result.ReusedDuplicateModIds.Count));
+                if (!string.IsNullOrWhiteSpace(result.SyncedOrderJsonPath) && result.SyncedModSettingsLsx)
+                {
+                    _state.Log(Loc.F(
+                        "Profiles.LoadOrderSync.JsonAndLsxLog",
+                        Path.GetFileName(result.SyncedOrderJsonPath),
+                        result.SyncedOrderJsonCount,
+                        result.SyncedModSettingsLsxCount));
+                }
+                else if (!string.IsNullOrWhiteSpace(result.SyncedOrderJsonPath))
+                {
+                    _state.Log(Loc.F(
+                        "Profiles.LoadOrderSync.JsonOnlyLog",
+                        Path.GetFileName(result.SyncedOrderJsonPath),
+                        result.SyncedOrderJsonCount));
+                }
+                else if (result.SyncedModSettingsLsx)
+                {
+                    _state.Log(Loc.F("Profiles.LoadOrderSync.LsxOnlyLog", result.SyncedModSettingsLsxCount));
+                }
+
                 foreach (string renameInfo in result.RenamedOriginalFiles)
                 {
                     _state.Log(Loc.F("App.ImportBackupLog", renameInfo));
