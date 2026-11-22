@@ -452,6 +452,7 @@ public static class ArchiveImportService
             TotalSizeBytes = totalSize,
             HasMetaLsx = info.HasMetaLsx,
             IsDetectedOverride = info.IsDetectedOverride,
+            DetectedOverrideKind = info.OverrideKind,
             OverrideReasons = info.OverrideReasons.ToList(),
             HasGeneratedSharedAssets = info.HasGeneratedSharedAssets,
             TrackedFiles = trackedRecords,
@@ -830,6 +831,14 @@ public static class ArchiveImportService
             {
                 warn = $"Mapped root file to BG3 Game/{sampleDest}. Verify destination before importing.";
             }
+            else if (!isIgnored &&
+                     grp.Files.Any(f => !string.Equals(f.SrcRel, f.DestRel, StringComparison.OrdinalIgnoreCase)))
+            {
+                string targetLabel = grp.Files.Count == 1
+                    ? sampleDest
+                    : GetCommonDestDirectoryPrefix(grp.Files.Select(f => f.DestRel));
+                warn = $"Installs to: {targetLabel}";
+            }
 
             plan.Items.Add(new ImportItemCandidate
             {
@@ -861,50 +870,83 @@ public static class ArchiveImportService
             return (ImportTargetKind.Ignore, relPath, relPath);
         }
 
-        string seg0 = parts[0];
+        string fileName = parts[^1];
+        string ext = Path.GetExtension(fileName);
 
-        if (seg0.Equals("Data", StringComparison.OrdinalIgnoreCase) && parts.Length >= 2)
+        // Reject documentation and preview images at any nesting depth.
+        // Non-readme .txt files remain eligible so game data files (e.g. Stats/Generated/Data/*.txt) still match.
+        bool isDocOrMedia = fileName.Equals("info.json", StringComparison.OrdinalIgnoreCase) ||
+                            fileName.StartsWith("readme", StringComparison.OrdinalIgnoreCase) ||
+                            (!string.IsNullOrEmpty(ext) && IgnoredExtensions.Contains(ext) && !ext.Equals(".txt", StringComparison.OrdinalIgnoreCase));
+        if (isDocOrMedia)
         {
-            string destRel = string.Join('/', parts.Skip(1));
-            string group = $"Data/{parts[1]}/";
-            return (ImportTargetKind.DataFolder, group, destRel);
+            string docGroup = parts.Length == 1 ? $"Docs/Metadata ({fileName})" : $"Docs/Metadata ({parts[0]})";
+            return (ImportTargetKind.Ignore, docGroup, relPath);
         }
 
-        if (seg0.Equals("Game", StringComparison.OrdinalIgnoreCase) && parts.Length >= 2)
+        // Scan segments left-to-right so outer BG3 roots (Data/, Game/, Public/, Generated/, bin/, NativeMods/)
+        // take precedence over identically named inner asset subfolders (e.g., Public/Mod/Stats/Generated/Data/).
+        for (int i = 0; i < parts.Length - 1; i++)
         {
-            string destRel = string.Join('/', parts.Skip(1));
-            string group = $"Game/{parts[1]}/";
-            return (ImportTargetKind.GameFolder, group, destRel);
-        }
+            string seg = parts[i];
+            string prefix = i > 0 ? string.Join('/', parts.Take(i)) + "/" : string.Empty;
 
-        if (RootDataDirs.Contains(seg0) && parts.Length >= 2)
-        {
-            return (ImportTargetKind.DataFolder, $"{seg0}/", relPath);
-        }
+            if (seg.Equals("Data", StringComparison.OrdinalIgnoreCase))
+            {
+                string destRel = string.Join('/', parts.Skip(i + 1));
+                string group = i + 1 < parts.Length - 1
+                    ? $"{prefix}Data/{parts[i + 1]}/"
+                    : $"{prefix}Data/";
+                return (ImportTargetKind.DataFolder, group, destRel);
+            }
 
-        if (seg0.Equals("Mods", StringComparison.OrdinalIgnoreCase) && parts.Length >= 2)
-        {
-            return (ImportTargetKind.DataFolder, $"Mods/{parts[1]}/", relPath);
-        }
+            if (seg.Equals("Game", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 2 < parts.Length && parts[i + 1].Equals("Data", StringComparison.OrdinalIgnoreCase))
+                {
+                    string dataDestRel = string.Join('/', parts.Skip(i + 2));
+                    string dataGroup = i + 2 < parts.Length - 1
+                        ? $"{prefix}Game/Data/{parts[i + 2]}/"
+                        : $"{prefix}Game/Data/";
+                    return (ImportTargetKind.DataFolder, dataGroup, dataDestRel);
+                }
 
-        if (seg0.Equals("bin", StringComparison.OrdinalIgnoreCase) && parts.Length >= 2)
-        {
-            return (ImportTargetKind.GameFolder, "bin/", relPath);
-        }
+                string gameDestRel = string.Join('/', parts.Skip(i + 1));
+                string gameGroup = i + 1 < parts.Length - 1
+                    ? $"{prefix}Game/{parts[i + 1]}/"
+                    : $"{prefix}Game/";
+                return (ImportTargetKind.GameFolder, gameGroup, gameDestRel);
+            }
 
-        if (seg0.Equals("NativeMods", StringComparison.OrdinalIgnoreCase) && parts.Length >= 2)
-        {
-            return (ImportTargetKind.GameFolder, "bin/NativeMods/", "bin/" + relPath);
+            if (RootDataDirs.Contains(seg))
+            {
+                string destRel = string.Join('/', parts.Skip(i));
+                return (ImportTargetKind.DataFolder, $"{prefix}{seg}/", destRel);
+            }
+
+            if (seg.Equals("Mods", StringComparison.OrdinalIgnoreCase) &&
+                (i == 0 || (parts.Length - i >= 3 && !IgnoredExtensions.Contains(ext))))
+            {
+                string destRel = string.Join('/', parts.Skip(i));
+                return (ImportTargetKind.DataFolder, $"{prefix}Mods/{parts[i + 1]}/", destRel);
+            }
+
+            if (seg.Equals("bin", StringComparison.OrdinalIgnoreCase))
+            {
+                string destRel = string.Join('/', parts.Skip(i));
+                return (ImportTargetKind.GameFolder, $"{prefix}bin/", destRel);
+            }
+
+            if (seg.Equals("NativeMods", StringComparison.OrdinalIgnoreCase))
+            {
+                string destRel = "bin/" + string.Join('/', parts.Skip(i));
+                return (ImportTargetKind.GameFolder, $"{prefix}bin/NativeMods/", destRel);
+            }
         }
 
         if (parts.Length == 1)
         {
-            string fileName = parts[0];
-            string ext = Path.GetExtension(fileName);
-
-            if (fileName.Equals("info.json", StringComparison.OrdinalIgnoreCase) ||
-                fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
-                fileName.StartsWith("readme", StringComparison.OrdinalIgnoreCase) ||
+            if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
                 IgnoredExtensions.Contains(ext))
             {
                 return (ImportTargetKind.Ignore, $"Docs/Metadata ({fileName})", fileName);
@@ -916,13 +958,49 @@ public static class ArchiveImportService
             }
         }
 
-        if (IgnoredExtensions.Contains(Path.GetExtension(relPath)) ||
-            Path.GetFileName(relPath).Equals("info.json", StringComparison.OrdinalIgnoreCase))
+        if (IgnoredExtensions.Contains(ext))
         {
             return (ImportTargetKind.Ignore, $"Docs/Metadata ({parts[0]})", relPath);
         }
 
         return (ImportTargetKind.Ignore, $"Other ({parts[0]})", relPath);
+    }
+
+    private static string GetCommonDestDirectoryPrefix(IEnumerable<string> destRelPaths)
+    {
+        List<string[]> dirs = destRelPaths
+            .Select(p =>
+            {
+                string[] segs = p.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                return segs.Length > 1 ? segs[..^1] : Array.Empty<string>();
+            })
+            .ToList();
+
+        if (dirs.Count == 0 || dirs[0].Length == 0)
+        {
+            return destRelPaths.FirstOrDefault() ?? string.Empty;
+        }
+
+        int commonLen = dirs[0].Length;
+        foreach (string[] d in dirs.Skip(1))
+        {
+            int limit = Math.Min(commonLen, d.Length);
+            int matched = 0;
+            while (matched < limit && string.Equals(dirs[0][matched], d[matched], StringComparison.OrdinalIgnoreCase))
+            {
+                matched++;
+            }
+
+            commonLen = matched;
+            if (commonLen == 0)
+            {
+                break;
+            }
+        }
+
+        return commonLen > 0
+            ? string.Join('/', dirs[0].Take(commonLen)) + "/"
+            : dirs[0][0] + "/";
     }
 
     private static IEnumerable<(string SourceRelative, string DestRelative)> EnumerateSourceAndDestPaths(

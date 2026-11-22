@@ -146,8 +146,10 @@ public partial class ArchiveImportDialog : Window
 
         SummaryLabel.Text = Loc.F("Dialog.ArchiveImport.SummaryFormat", selectedCount, FormatHelper.FormatBytes(totalBytes));
         ImportButton.IsEnabled = selectedCount > 0;
-        CustomNameBox.IsEnabled = loose > 0 && paks == 0;
+        CustomNameBox.IsEnabled = loose > 0 && (paks == 0 || HybridCheckBox.IsChecked != true);
     }
+
+    private void OnHybridCheckChanged(object sender, RoutedEventArgs e) => RefreshSummary();
 
     private void OnImportClick(object sender, RoutedEventArgs e)
     {

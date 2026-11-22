@@ -52,7 +52,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                    <CheckBox x:Name="HybridCheckBox" Margin="0,0,0,10">
+                    <CheckBox x:Name="HybridCheckBox" Margin="0,0,0,10" Checked="OnHybridCheckChanged" Unchecked="OnHybridCheckChanged">
                         <TextBlock Text="{helpers:Loc Dialog.ArchiveImport.HybridCheck}" TextWrapping="Wrap" />
                     </CheckBox>
                     <WrapPanel Orientation="Horizontal">

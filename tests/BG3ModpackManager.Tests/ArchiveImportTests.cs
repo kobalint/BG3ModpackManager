@@ -15,6 +15,7 @@ internal static class ArchiveImportTests
         await TestSevenZipMariDataImportAndPruningAsync();
         await TestNativeModLoaderOriginalBackupRestoreAndUninstallAsync();
         await TestReimportRepairsMissingAndOverwrittenLooseAndPakModsAsync();
+        await TestDeeplyNestedBinAndGeneratedWithPakImportAsync();
         await TestZipSlipRejectedAsync();
         TestDeletableArchiveExtensionDetection();
     }
@@ -518,6 +519,148 @@ internal static class ArchiveImportTests
         finally
         {
             ArchiveImportService.CleanupStaging(hybPlan2);
+        }
+    }
+
+    private static async Task TestDeeplyNestedBinAndGeneratedWithPakImportAsync()
+    {
+        // Case A: Exact True Third-Person Camera layout (Hybrid + Separate modes)
+        string srcRoot = Path.Combine(Path.GetTempPath(), "BG3MPM_TppSrc_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(srcRoot);
+        try
+        {
+            string tppZip = Path.Combine(srcRoot, "TrueThirdPersonCamera_v2.zip");
+            string pakTemp = Path.Combine(srcRoot, "TrueThirdPersonCamera.pak");
+            TestPakBuilder.CreatePakV18(pakTemp, new[]
+            {
+                ("Mods/TrueThirdPersonCamera/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("True Third-Person Camera", "6e84559a-1b7a-4441-bfc6-c2bae5538491", "TrueThirdPersonCamera")), TestPakBuilder.PayloadCompression.None)
+            });
+            byte[] pakBytes = await File.ReadAllBytesAsync(pakTemp);
+            byte[] dllBytes = "TPP_DLL_PAYLOAD"u8.ToArray();
+
+            using (ZipArchive z = ZipFile.Open(tppZip, ZipArchiveMode.Create))
+            {
+                WriteZipEntry(z, "1 - Main Game Folder Files/bin/NativeMods/TrueThirdPersonCamera.dll", dllBytes);
+                WriteZipEntry(z, "2 - BG3 Mod Manager File/TrueThirdPersonCamera.pak", pakBytes);
+                WriteZipEntry(z, "README.txt", "Install instructions"u8.ToArray());
+            }
+
+            // A1: Default Hybrid import
+            using (var sandbox = new TempSandbox())
+            {
+                ArchiveImportPlan plan = await ArchiveImportService.InspectDropAsync(tppZip, sandbox.Settings, sandbox.Db);
+                try
+                {
+                    ImportItemCandidate pakCand = plan.Items.Single(i => i.TargetKind == ImportTargetKind.ModsPak);
+                    ImportItemCandidate binCand = plan.Items.Single(i => i.TargetKind == ImportTargetKind.GameFolder);
+                    ImportItemCandidate readmeCand = plan.Items.Single(i => i.TargetKind == ImportTargetKind.Ignore);
+
+                    TestAssert.True(pakCand.IsSelected, "Nested .pak is auto-selected");
+                    TestAssert.True(binCand.IsSelected, "Nested bin/ is auto-selected as GameFolder");
+                    TestAssert.Equal("bin/NativeMods/TrueThirdPersonCamera.dll", binCand.DestinationRelativePath, "Wrapper prefix stripped from bin destination path");
+                    TestAssert.False(readmeCand.IsSelected, "README.txt ignored by default");
+                    TestAssert.True(plan.PackageAsSingleHybridMod, "1 PAK + nested bin/ defaults to PackageAsSingleHybridMod");
+
+                    ArchiveImportResult res = await ArchiveImportService.CommitImportAsync(plan, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+                    TestAssert.Equal(0, res.Errors.Count, "Hybrid import of nested PAK+bin succeeds");
+                    TestAssert.Equal(1, res.ImportedModIds.Count, "Imported as 1 Hybrid mod");
+
+                    string activePak = Path.Combine(sandbox.Settings.ModsFolder, "TrueThirdPersonCamera.pak");
+                    string activeDll = Path.Combine(sandbox.Settings.GameFolder, "bin", "NativeMods", "TrueThirdPersonCamera.dll");
+                    string wrongWrapperDir = Path.Combine(sandbox.Settings.GameFolder, "1 - Main Game Folder Files");
+                    TestAssert.True(File.Exists(activePak), "PAK installed to Mods/");
+                    TestAssert.True(File.Exists(activeDll), "DLL installed to Game/bin/NativeMods/ without wrapper prefix");
+                    TestAssert.False(Directory.Exists(wrongWrapperDir), "Wrapper directory must NOT be created in Game folder");
+
+                    // Vault round-trip on Hybrid mod moves both files out and back cleanly
+                    ModEntry mod = sandbox.Db.Mods.Single();
+                    ModLibraryService.MoveModToVault(mod, sandbox.Settings);
+                    TestAssert.Equal(ModLocation.Vault, mod.Location, "Hybrid moves cleanly to Vault");
+                    TestAssert.False(File.Exists(activePak), "Hybrid PAK removed from Mods/");
+                    TestAssert.False(File.Exists(activeDll), "Hybrid DLL removed from Game/bin/NativeMods/");
+
+                    ModLibraryService.ActivateModFromVault(mod, sandbox.Settings);
+                    TestAssert.Equal(ModLocation.Active, mod.Location, "Hybrid reactivates from Vault");
+                    TestAssert.True(File.Exists(activePak), "Hybrid PAK restored");
+                    TestAssert.True(File.Exists(activeDll), "Hybrid DLL restored");
+                }
+                finally
+                {
+                    ArchiveImportService.CleanupStaging(plan);
+                }
+            }
+
+            // A2: Separate (non-Hybrid) import from the same nested zip
+            using (var sandbox = new TempSandbox())
+            {
+                ArchiveImportPlan plan = await ArchiveImportService.InspectDropAsync(tppZip, sandbox.Settings, sandbox.Db);
+                try
+                {
+                    plan.PackageAsSingleHybridMod = false;
+                    ArchiveImportResult res = await ArchiveImportService.CommitImportAsync(plan, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+                    TestAssert.Equal(0, res.Errors.Count, "Separate import of nested PAK+bin succeeds");
+                    TestAssert.Equal(2, res.ImportedModIds.Count, "Imported as 2 separate entries (Pak + LooseGame)");
+                    TestAssert.True(File.Exists(Path.Combine(sandbox.Settings.ModsFolder, "TrueThirdPersonCamera.pak")), "Separate PAK in Mods/");
+                    TestAssert.True(File.Exists(Path.Combine(sandbox.Settings.GameFolder, "bin", "NativeMods", "TrueThirdPersonCamera.dll")), "Separate DLL in Game/bin/NativeMods/");
+                    TestAssert.Equal(1, sandbox.Db.Mods.Count(m => m.Kind == ModKind.Pak), "Library has 1 Pak entry");
+                    TestAssert.Equal(1, sandbox.Db.Mods.Count(m => m.Kind == ModKind.LooseGame && m.TrackedFiles.Single().RelativePath == "bin/NativeMods/TrueThirdPersonCamera.dll"),
+                        "Library has 1 LooseGame entry with stripped bin/NativeMods path");
+                }
+                finally
+                {
+                    ArchiveImportService.CleanupStaging(plan);
+                }
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(srcRoot))
+            {
+                Directory.Delete(srcRoot, recursive: true);
+            }
+        }
+
+        // Case B: Multi-level nested Generated/, NativeMods/, outer Public/.../Stats/Generated/Data/Armor.txt, Game/Data/..., and nested docs/images
+        using (var sandbox = new TempSandbox())
+        {
+            string multiZip = Path.Combine(sandbox.Root, "NestedMultiLayout.zip");
+            using (ZipArchive z = ZipFile.Open(multiZip, ZipArchiveMode.Create))
+            {
+                WriteZipEntry(z, "Optional/Deep/Wrapper/Generated/Public/Shared/Assets/skin.dds", new byte[] { 1, 2, 3 });
+                WriteZipEntry(z, "Step1/Plugins/NativeMods/CameraPlugin.dll", new byte[] { 4, 5, 6 });
+                WriteZipEntry(z, "Step2/Public/MyMod/Stats/Generated/Data/Armor.txt", "new entry \"X\""u8.ToArray());
+                WriteZipEntry(z, "InstallHere/Game/Data/Generated/Public/Shared/Assets/extra.dds", new byte[] { 7, 8 });
+                WriteZipEntry(z, "Optional/Deep/Wrapper/bin/README.txt", "ignore me"u8.ToArray());
+                WriteZipEntry(z, "Step1/preview.png", new byte[] { 0x89, 0x50 });
+            }
+
+            ArchiveImportPlan plan = await ArchiveImportService.InspectDropAsync(multiZip, sandbox.Settings, sandbox.Db);
+            try
+            {
+                TestAssert.True(plan.Items.Any(i => i.TargetKind == ImportTargetKind.DataFolder && i.DestinationRelativePath == "Generated/Public/Shared/Assets/skin.dds" && i.IsSelected),
+                    "Deeply nested Generated/ maps to Data/Generated/...");
+                TestAssert.True(plan.Items.Any(i => i.TargetKind == ImportTargetKind.GameFolder && i.DestinationRelativePath == "bin/NativeMods/CameraPlugin.dll" && i.IsSelected),
+                    "Deeply nested NativeMods/ maps to Game/bin/NativeMods/...");
+                TestAssert.True(plan.Items.Any(i => i.TargetKind == ImportTargetKind.DataFolder && i.DestinationRelativePath == "Public/MyMod/Stats/Generated/Data/Armor.txt" && i.IsSelected),
+                    "Outer Public/ takes precedence over inner Generated/Data/ for Stats/Generated/Data/Armor.txt");
+                TestAssert.True(plan.Items.Any(i => i.TargetKind == ImportTargetKind.DataFolder && i.DestinationRelativePath == "Generated/Public/Shared/Assets/extra.dds" && i.IsSelected),
+                    "Nested Game/Data/ maps cleanly to Data/");
+                TestAssert.True(plan.Items.Where(i => i.TargetKind == ImportTargetKind.Ignore).Count() == 2 &&
+                                plan.Items.Where(i => i.TargetKind == ImportTargetKind.Ignore).All(i => !i.IsSelected),
+                    "Nested README.txt and preview.png are ignored");
+
+                ArchiveImportResult res = await ArchiveImportService.CommitImportAsync(plan, null, installActiveNow: true, sandbox.Settings, sandbox.Db);
+                TestAssert.Equal(0, res.Errors.Count, "Multi-layout nested import succeeds");
+                TestAssert.True(File.Exists(Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "Shared", "Assets", "skin.dds")), "Nested skin.dds installed to Data/");
+                TestAssert.True(File.Exists(Path.Combine(sandbox.Settings.GameFolder, "bin", "NativeMods", "CameraPlugin.dll")), "Nested CameraPlugin.dll installed to Game/bin/NativeMods/");
+                TestAssert.True(File.Exists(Path.Combine(sandbox.Settings.DataFolder, "Public", "MyMod", "Stats", "Generated", "Data", "Armor.txt")), "Stats Armor.txt installed under Data/Public/");
+                TestAssert.True(File.Exists(Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "Shared", "Assets", "extra.dds")), "Game/Data extra.dds installed to Data/");
+                TestAssert.False(File.Exists(Path.Combine(sandbox.Settings.GameFolder, "bin", "README.txt")), "Nested bin/README.txt not installed");
+            }
+            finally
+            {
+                ArchiveImportService.CleanupStaging(plan);
+            }
         }
     }
 
