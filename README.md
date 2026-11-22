@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="src/BG3ModpackManager.App/Assets/app_icon.png" width="110" alt="BG3 Modpack Manager Icon" />
+  <img src="src/BG3ModpackTools.App/Assets/app_icon.png" width="110" alt="BG3 Modpack Tools Icon" />
 
-  # BG3 Modpack Manager
+  # BG3 Modpack Tools
 
-  **Portable Windows modpack profile switcher, override detector, and single-copy Vault manager for Baldur's Gate 3**
+  **Portable Windows modpack profile switcher, override detector, and single-copy Vault toolkit for Baldur's Gate 3**
 
   ![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?logo=windows)
   ![.NET](https://img.shields.io/badge/.NET-8.0%20WPF-512BD4?logo=dotnet)
@@ -23,13 +23,13 @@
 
 ---
 
-## Why BG3 Modpack Manager?
+## Why BG3 Modpack Tools?
 
 In **Baldur's Gate 3**, simply removing a `.pak` from your active load order in **BG3ModManager** does not always prevent the game from loading it:
 - **Override `.pak` files** (mods that override `Public/Shared/`, `Mods/GustavDev/`, `Video/`, or lack a `meta.lsx`, such as *HighlightEverything*, *NoIntro*, *Mod Configuration Menu*, *ASTRL Lifelike*, or *Unique Tav / KAVT*) are loaded automatically whenever they sit inside your `Mods` folder.
 - **Loose `Data/` and `bin/` mods** (such as *Mari's Makeup/Tattoo*, *Unique Tav* loose assets under `Data/Generated/`, *Native Mod Loader* `bink2w64.dll`, *Native Camera Tweaks*, *WASD Character Movement*, and *BG3 Script Extender*) live directly inside the game installation directory and must be parked out of the way when switching to a vanilla or co-op profile.
 
-**BG3 Modpack Manager** works alongside **BG3ModManager** `.json` load orders to switch full profiles cleanly while keeping **only one single copy of each mod on disk** (keyed by SHA-256 content hash). Shared mods across two profiles stay untouched in place with zero redundant file copying.
+**BG3 Modpack Tools** works alongside **BG3ModManager** `.json` load orders to switch full profiles cleanly while keeping **only one single copy of each mod on disk** (keyed by SHA-256 content hash). Shared mods across two profiles stay untouched in place with zero redundant file copying.
 
 ---
 
@@ -76,6 +76,11 @@ Adapts down to a compact `760 × 540` window for half-screen Windows Snap, autom
 - **Full `.7z` Modpack Profile Export & Import**
   - Export any profile into a self-contained `.7z` archive containing its `.pak` files, tracked loose mods, live `Data/Generated/` mod assets (excluding Toolkit editor gizmos), live `Game/bin/` mods (*NativeMods*, *Native Mod Loader*, *Script Extender*), BG3MM `.json` load order, `profile_manifest.json`, and install guide.
   - Re-import exported `.7z` modpacks via the **Import .7z...** button or drag-and-drop with single-copy deduplication.
+- **BG3MM Load Order Auto-Sync & Drag-and-Drop Editor**
+  - Edit your profile load order directly via BG3MM-style single/multi-row drag-and-drop (`Ctrl+Up`/`Ctrl+Down` or Up/Down buttons) while keeping linked loose `Data/` and `Game/bin/` mods attached at the end.
+  - Importing, adding, removing, uninstalling, or reordering mods automatically writes linked BG3ModManager `.json` files (ready for `F5` refresh in BG3MM) and keeps active `modsettings.lsx` synchronized (with `.bak` backups) by default on profile switches.
+- **Quick Game Launcher & Folder Shortcuts**
+  - Adaptive **Start Baldur's Gate 3** button (configurable between DirectX 11 `bg3_dx11.exe` and Vulkan `bg3.exe` in Settings) alongside one-click **Open Mods Folder**, **Open Game Folder**, and **Open Vault Folder** shortcuts.
 - **Non-Destructive Original Game File Replacement (`.bg3mpm_orig`)**
   - When a mod replaces an existing vanilla or untracked game file (such as *Native Mod Loader* replacing `bin\bink2w64.dll` or loose textures replacing files under `Data\Generated\`), the original file is never overwritten — it is renamed in place to `*.bg3mpm_orig` and recorded on the mod entry.
   - Moving the mod to the Vault or clicking **Uninstall Mod** automatically restores the original game file byte-for-byte and prunes empty mod subdirectories (while preserving base folders like `Data\Generated\Public\Shared`).
@@ -102,26 +107,26 @@ git clone https://github.com/kobalint/BG3ModpackManager.git
 cd BG3ModpackManager
 
 # 2. Build the solution
-dotnet build BG3ModpackManager.sln -c Release
+dotnet build BG3ModpackTools.sln -c Release
 
 # 3. Run the automated 7-suite sandbox test harness
-dotnet run --project tests\BG3ModpackManager.Tests\BG3ModpackManager.Tests.csproj -c Release
+dotnet run --project tests\BG3ModpackTools.Tests\BG3ModpackTools.Tests.csproj -c Release
 
-# 4. Publish the portable single-file executable to .\dist\BG3ModpackManager.exe
+# 4. Publish the portable single-file executable to .\dist\BG3ModpackTools.exe
 .\publish.ps1
 ```
 
-Place `BG3ModpackManager.exe` in any folder (ideally on the same drive as your BG3 installation so Vault moves are instant atomic renames) and launch it. On first launch it auto-detects your BG3 `Mods`, `Game`, `Data`, `modsettings.lsx`, and BG3ModManager `Orders` directories.
+Place `BG3ModpackTools.exe` in any folder (ideally on the same drive as your BG3 installation so Vault moves are instant atomic renames) and launch it. On first launch it auto-detects your BG3 `Mods`, `Game`, `Data`, `modsettings.lsx`, and BG3ModManager `Orders` directories.
 
 ---
 
 ## Portable Folder Structure
 
-All application state is stored locally next to `BG3ModpackManager.exe`:
+All application state is stored locally next to `BG3ModpackTools.exe`:
 
 | Path | Description |
 | :--- | :--- |
-| `BG3ModpackManager.exe` | Portable single-file WPF executable |
+| `BG3ModpackTools.exe` | Portable single-file WPF executable |
 | `data\settings.json` | Configured BG3 & BG3MM paths, switch mode, theme, and last used language (`en` default) |
 | `data\library.json` | Single-copy mod database, tracked loose file manifests, `.bg3mpm_orig` backup records, and profiles |
 | `data\pak-cache.json` | Cached LSPK metadata and SHA-256 hashes for fast startup scans |
@@ -141,7 +146,7 @@ All application state is stored locally next to `BG3ModpackManager.exe`:
 
 ## Automated Test Suites
 
-The `tests\BG3ModpackManager.Tests` runner executes 7 isolated sandbox test suites (never touching real BG3 folders):
+The `tests\BG3ModpackTools.Tests` runner executes 7 isolated sandbox test suites (never touching real BG3 folders):
 - `LspkReaderTests` — LSPK v16/v18 parsing, `meta.lsx` extraction, LZ4/Zlib decompression, and override classification
 - `ArchiveImportTests` — `.zip` & `.7z` import routing, Hybrid mod packaging, zip-slip protection, and `.bg3mpm_orig` backup & uninstall restoration
 - `ProfileSwitchTests` — Zero-copy shared mod retention, `unique_tav.pak` variant swapping, loose `Data/` pruning, and `modsettings.lsx` sync with `.bak` backup
