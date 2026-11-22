@@ -5,6 +5,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Product>BG3 Modpack Tools</Product>
+    <Authors>HussarStrike</Authors>
+    <Company>HussarStrike</Company>
+    <Copyright>Copyright © 2026 HussarStrike</Copyright>
+    <Description>Core library for BG3 Modpack Tools — LSPK .pak inspection, override detection, single-copy Vault switching, and BG3MM load order sync.</Description>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

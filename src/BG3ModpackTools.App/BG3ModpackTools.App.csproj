@@ -9,6 +9,16 @@
     <ApplicationTitle>BG3 Modpack Tools</ApplicationTitle>
     <AssemblyName>BG3ModpackTools</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <AssemblyTitle>BG3 Modpack Tools</AssemblyTitle>
+    <Product>BG3 Modpack Tools</Product>
+    <Authors>HussarStrike</Authors>
+    <Company>HussarStrike</Company>
+    <Copyright>Copyright © 2026 HussarStrike</Copyright>
+    <Description>Portable Windows modpack profile switcher, override detector, and single-copy Vault toolkit for Baldur's Gate 3.</Description>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

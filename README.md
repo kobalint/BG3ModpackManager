@@ -71,7 +71,8 @@ Adapts down to a compact `760 × 540` window for half-screen Windows Snap, autom
   - Ignores harmless custom icon packs under `Public/Game/GUI/Assets/...`.
 - **Drag & Drop Mod Installer (`.zip`, `.7z`, `.rar`, `.pak`, Folders)**
   - Drag one or multiple archives downloaded from NexusMods directly onto the window.
-  - Automatically detects and routes `.pak` files to `Mods/`, `Generated`/`Public`/`Localization`/`Video` trees to BG3 `Data/`, and `bin`/`NativeMods` files to the BG3 `Game` folder (or bundles a `.pak` + loose files into a single **Hybrid** mod).
+  - Automatically detects and routes `.pak` files to `Mods/`, nested `Generated`/`Public`/`Localization`/`Video`/`Data` trees to BG3 `Data/`, and nested `bin`/`NativeMods` folders deeper inside archives to the BG3 `Game` folder — even when `.pak` files are present alongside them — with a live **Hybrid** vs. loose packaging toggle in the import dialog.
+  - Re-importing an existing mod archive automatically repairs any missing or overwritten files in its target location.
   - Asks once after a batch import whether you want to delete the original `.zip` / `.7z` archive file(s).
 - **Full `.7z` Modpack Profile Export & Import**
   - Export any profile into a self-contained `.7z` archive containing its `.pak` files, tracked loose mods, live `Data/Generated/` mod assets (excluding Toolkit editor gizmos), live `Game/bin/` mods (*NativeMods*, *Native Mod Loader*, *Script Extender*), BG3MM `.json` load order, `profile_manifest.json`, and install guide.
@@ -79,6 +80,7 @@ Adapts down to a compact `760 × 540` window for half-screen Windows Snap, autom
 - **BG3MM Load Order Auto-Sync & Drag-and-Drop Editor**
   - Edit your profile load order directly via BG3MM-style single/multi-row drag-and-drop (`Ctrl+Up`/`Ctrl+Down` or Up/Down buttons) while keeping linked loose `Data/` and `Game/bin/` mods attached at the end.
   - Importing, adding, removing, uninstalling, or reordering mods automatically writes linked BG3ModManager `.json` files (ready for `F5` refresh in BG3MM) and keeps active `modsettings.lsx` synchronized (with `.bak` backups) by default on profile switches.
+  - Refreshing or re-importing BG3ModManager `.json` orders automatically preserves linked loose `Data/` and `Game/bin/` mods and auto-matches the active profile on startup.
 - **Quick Game Launcher & Folder Shortcuts**
   - Adaptive **Start Baldur's Gate 3** button (configurable between DirectX 11 `bg3_dx11.exe` and Vulkan `bg3.exe` in Settings) alongside one-click **Open Mods Folder**, **Open Game Folder**, and **Open Vault Folder** shortcuts.
 - **Non-Destructive Original Game File Replacement (`.bg3mpm_orig`)**
@@ -103,8 +105,8 @@ Adapts down to a compact `760 × 540` window for half-screen Windows Snap, autom
 
 ```powershell
 # 1. Clone the repository
-git clone https://github.com/kobalint/BG3ModpackManager.git
-cd BG3ModpackManager
+git clone https://github.com/kobalint/BG3ModpackTools.git
+cd BG3ModpackTools
 
 # 2. Build the solution
 dotnet build BG3ModpackTools.sln -c Release
@@ -112,7 +114,7 @@ dotnet build BG3ModpackTools.sln -c Release
 # 3. Run the automated 7-suite sandbox test harness
 dotnet run --project tests\BG3ModpackTools.Tests\BG3ModpackTools.Tests.csproj -c Release
 
-# 4. Publish the portable single-file executable to .\dist\BG3ModpackTools.exe
+# 4. Publish the portable single-file executable to .\dist\BG3ModpackTools.exe (and .\dist\BG3ModpackTools.zip)
 .\publish.ps1
 ```
 

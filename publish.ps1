@@ -16,4 +16,11 @@ if (-not (Test-Path $exePath)) {
     throw "Expected executable not found at $exePath"
 }
 
+$zipPath = Join-Path $outDir "BG3ModpackTools.zip"
+Compress-Archive -Path $exePath -DestinationPath $zipPath -Force
+if (-not (Test-Path $zipPath)) {
+    throw "Expected zip archive not found at $zipPath"
+}
+
 Write-Host "Published successfully: $exePath"
+Write-Host "Packaged archive:       $zipPath"
