@@ -9,10 +9,26 @@ public sealed class ProfileExportOptions
     public bool IncludePaks { get; set; } = true;
     public bool IncludeLooseMods { get; set; } = true;
     public bool IncludeGeneratedFolder { get; set; } = true;
+    public HashSet<string>? SelectedGeneratedGroupKeys { get; set; }
     public bool IncludeBinMods { get; set; } = true;
     public bool IncludeOrderJson { get; set; } = true;
     public bool IncludeManifestAndReadme { get; set; } = true;
     public int CompressionLevel { get; set; } = 1;
+}
+
+/// <summary>
+/// Represents a discovered subfolder inside BG3 Data\Generated\ (such as Public\Shared or a Toolkit project folder)
+/// so real loose override mods are checked by default while Toolkit project folders are unchecked by default.
+/// </summary>
+public sealed class GeneratedExportFolderGroup
+{
+    public string GroupKey { get; set; } = string.Empty;
+    public string FolderName { get; set; } = string.Empty;
+    public int FileCount { get; set; }
+    public long TotalBytes { get; set; }
+    public bool IsSelectedByDefault { get; set; }
+    public bool IsToolkitProject { get; set; }
+    public List<(string FullPath, string RelativePath, long Size)> Files { get; set; } = new();
 }
 
 /// <summary>
@@ -32,6 +48,7 @@ public sealed class ProfileExportPreview
     public long LooseGameTotalBytes { get; set; }
     public int LiveGeneratedFileCount { get; set; }
     public long LiveGeneratedTotalBytes { get; set; }
+    public List<GeneratedExportFolderGroup> GeneratedGroups { get; set; } = new();
     public int LiveBinModCount { get; set; }
     public int LiveBinFileCount { get; set; }
     public long LiveBinTotalBytes { get; set; }

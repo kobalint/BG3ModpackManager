@@ -374,7 +374,7 @@ internal static class ProfileExportTests
         var profile = new ModProfile { Name = "LiveScanProfile", ModIds = new List<string> { baseMod.Id } };
         sandbox.Db.Profiles.Add(profile);
 
-        // Seed live Data/Generated files (custom DDS + Editor gizmo that must be excluded)
+        // Seed live Data/Generated files (custom Shared DDS + Engine gizmos + Toolkit project folders that must be unchecked/excluded by default)
         string customDds = Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "Shared", "makeup.dds");
         Directory.CreateDirectory(Path.GetDirectoryName(customDds)!);
         await File.WriteAllBytesAsync(customDds, "CUSTOM_MAKEUP_DDS"u8.ToArray());
@@ -382,6 +382,22 @@ internal static class ProfileExportTests
         string editorGizmo = Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "Engine", "Assets", "Editor", "gizmo.gr2");
         Directory.CreateDirectory(Path.GetDirectoryName(editorGizmo)!);
         await File.WriteAllBytesAsync(editorGizmo, "EDITOR_GIZMO"u8.ToArray());
+
+        string toolkitUuidFile = Path.Combine(
+            sandbox.Settings.DataFolder,
+            "Generated",
+            "Public",
+            "Hemowalker_1ee9875e-4631-7b69-2d16-e17f08e76d30",
+            "Assets",
+            "vfx.dds");
+        Directory.CreateDirectory(Path.GetDirectoryName(toolkitUuidFile)!);
+        await File.WriteAllBytesAsync(toolkitUuidFile, "TOOLKIT_PROJECT_VFX"u8.ToArray());
+
+        string toolkitProjDir = Path.Combine(sandbox.Settings.DataFolder, "Projects", "MyToolkitMod");
+        Directory.CreateDirectory(toolkitProjDir);
+        string toolkitProjGenFile = Path.Combine(sandbox.Settings.DataFolder, "Generated", "Public", "MyToolkitMod", "mesh.gr2");
+        Directory.CreateDirectory(Path.GetDirectoryName(toolkitProjGenFile)!);
+        await File.WriteAllBytesAsync(toolkitProjGenFile, "TOOLKIT_PROJECT_MESH"u8.ToArray());
 
         // Seed Game/bin mods + vanilla files + logs/backups
         string binDir = Path.Combine(sandbox.Settings.GameFolder, "bin");
@@ -401,7 +417,13 @@ internal static class ProfileExportTests
         await File.WriteAllTextAsync(Path.Combine(binDir, "gold.log"), "vanilla gold log\n");
 
         ProfileExportPreview preview = ProfileExportService.BuildExportPreview(profile, sandbox.Settings, sandbox.Db);
-        TestAssert.Equal(1, preview.LiveGeneratedFileCount, "Live Data/Generated excludes Editor gizmo and finds 1 custom file");
+        TestAssert.Equal(1, preview.LiveGeneratedFileCount, "Live Data/Generated default count includes only Shared and excludes Engine + Toolkit project folders");
+        TestAssert.Equal(3, preview.GeneratedGroups.Count, "GeneratedGroups lists Shared + 2 Toolkit project folders (Engine completely excluded)");
+        TestAssert.True(preview.GeneratedGroups.Single(g => g.FolderName == "Shared").IsSelectedByDefault, "Shared is checked by default");
+        TestAssert.False(preview.GeneratedGroups.Single(g => g.FolderName.StartsWith("Hemowalker_", StringComparison.OrdinalIgnoreCase)).IsSelectedByDefault, "Toolkit UUID project folder is unchecked by default");
+        TestAssert.True(preview.GeneratedGroups.Single(g => g.FolderName.StartsWith("Hemowalker_", StringComparison.OrdinalIgnoreCase)).IsToolkitProject, "Toolkit UUID project folder flagged IsToolkitProject=true");
+        TestAssert.False(preview.GeneratedGroups.Single(g => g.FolderName == "MyToolkitMod").IsSelectedByDefault, "Data/Projects folder is unchecked by default");
+        TestAssert.True(preview.GeneratedGroups.Single(g => g.FolderName == "MyToolkitMod").IsToolkitProject, "Data/Projects folder flagged IsToolkitProject=true");
         TestAssert.True(preview.LiveBinModCount >= 3, "Detected NativeMods, ScriptExtender (DWrite), and bink2w64 NML groups");
         TestAssert.True(preview.LiveBinFileCount >= 5, "Detected live bin mod files");
 
@@ -441,6 +463,8 @@ internal static class ProfileExportTests
         TestAssert.False(normEntries.Any(e => e.EndsWith(".log", StringComparison.OrdinalIgnoreCase)), "Log files must not be exported");
         TestAssert.False(normEntries.Any(e => e.EndsWith(".bg3mpm_orig", StringComparison.OrdinalIgnoreCase)), ".bg3mpm_orig backup files must not be exported");
         TestAssert.False(normEntries.Any(e => e.Contains("Editor/gizmo.gr2", StringComparison.OrdinalIgnoreCase)), "Toolkit Editor gizmos must not be exported");
+        TestAssert.False(normEntries.Any(e => e.Contains("Hemowalker_", StringComparison.OrdinalIgnoreCase)), "Toolkit UUID project folder must not be exported by default");
+        TestAssert.False(normEntries.Any(e => e.Contains("MyToolkitMod", StringComparison.OrdinalIgnoreCase)), "Data/Projects folder must not be exported by default");
     }
 
     private static async Task ImportExportedModpack7z_ReconstructsProfileAndBackupsOriginalGameFilesForUninstallAsync()

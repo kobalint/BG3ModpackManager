@@ -832,6 +832,7 @@ public partial class ProfilesView : UserControl
             IncludePaks = dlg.IncludePaks,
             IncludeLooseMods = dlg.IncludeLooseMods,
             IncludeGeneratedFolder = dlg.IncludeGeneratedFolder,
+            SelectedGeneratedGroupKeys = dlg.SelectedGeneratedGroupKeys,
             IncludeBinMods = dlg.IncludeBinMods,
             IncludeOrderJson = dlg.IncludeOrderJson,
             IncludeManifestAndReadme = dlg.IncludeManifestAndReadme,

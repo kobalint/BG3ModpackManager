@@ -89,6 +89,32 @@
                     <CheckBox x:Name="IncludeGeneratedCheck" Margin="0,0,0,6">
                         <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeGenerated}" TextWrapping="Wrap" />
                     </CheckBox>
+                    <Border x:Name="GeneratedGroupsBorder"
+                            Style="{StaticResource CardBorder}"
+                            Padding="10,8"
+                            Margin="20,0,0,8"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="{helpers:Loc Dialog.Export7z.GenFoldersHeader}"
+                                       Style="{StaticResource MutedCaption}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <ItemsControl x:Name="GeneratedGroupsList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  IsEnabled="{Binding IsChecked, ElementName=IncludeGeneratedCheck}"
+                                                  Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding LabelText}"
+                                                       Foreground="{Binding LabelBrush}"
+                                                       TextWrapping="Wrap"
+                                                       FontSize="12" />
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
                     <CheckBox x:Name="IncludeBinCheck" Margin="0,0,0,6">
                         <TextBlock Text="{helpers:Loc Dialog.Export7z.IncludeBin}" TextWrapping="Wrap" />
                     </CheckBox>

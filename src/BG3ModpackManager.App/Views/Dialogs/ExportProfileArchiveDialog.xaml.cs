@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using BG3ModpackManager.App.Helpers;
 using BG3ModpackManager.App.Services;
 using BG3ModpackManager.Core.Models;
@@ -9,10 +10,55 @@ namespace BG3ModpackManager.App.Views.Dialogs;
 
 public partial class ExportProfileArchiveDialog : Window
 {
+    public sealed class GeneratedGroupRow : ObservableObject
+    {
+        private bool _isSelected;
+
+        public required GeneratedExportFolderGroup Group { get; init; }
+        public string GroupKey => Group.GroupKey;
+
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                if (_isSelected != value)
+                {
+                    _isSelected = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string LabelText
+        {
+            get
+            {
+                string tag = Group.IsSelectedByDefault
+                    ? Loc.T("Dialog.Export7z.GenTagMod")
+                    : (Group.IsToolkitProject
+                        ? Loc.T("Dialog.Export7z.GenTagToolkit")
+                        : Loc.T("Dialog.Export7z.GenTagOther"));
+                return Loc.F(
+                    "Dialog.Export7z.GenRowFormat",
+                    Group.GroupKey,
+                    Group.FileCount,
+                    FormatHelper.FormatBytes(Group.TotalBytes),
+                    tag);
+            }
+        }
+
+        public Brush LabelBrush => ThemeManager.GetBrush(Group.IsSelectedByDefault ? "BrushTextPrimary" : "BrushTextSecondary");
+    }
+
+    private readonly ProfileExportPreview _preview;
+    private readonly List<GeneratedGroupRow> _generatedRows;
+
     public string OutputArchivePath { get; private set; } = string.Empty;
     public bool IncludePaks { get; private set; }
     public bool IncludeLooseMods { get; private set; }
     public bool IncludeGeneratedFolder { get; private set; }
+    public HashSet<string> SelectedGeneratedGroupKeys { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool IncludeBinMods { get; private set; }
     public bool IncludeOrderJson { get; private set; }
     public bool IncludeManifestAndReadme { get; private set; }
@@ -21,18 +67,30 @@ public partial class ExportProfileArchiveDialog : Window
     public ExportProfileArchiveDialog(ProfileExportPreview preview, string defaultOutputPath)
     {
         InitializeComponent();
+        _preview = preview;
 
-        long totalBytes = preview.PakTotalBytes +
-                          preview.LooseDataTotalBytes +
-                          preview.LooseGameTotalBytes +
-                          preview.LiveGeneratedTotalBytes +
-                          preview.LiveBinTotalBytes;
-        SubtitleText.Text = Loc.F("Dialog.Export7z.Subtitle", preview.ProfileName, FormatHelper.FormatBytes(totalBytes));
+        _generatedRows = preview.GeneratedGroups
+            .Select(g => new GeneratedGroupRow
+            {
+                Group = g,
+                IsSelected = g.IsSelectedByDefault
+            })
+            .ToList();
+
+        foreach (GeneratedGroupRow row in _generatedRows)
+        {
+            row.PropertyChanged += (_, _) => RefreshGeneratedSummary();
+        }
+
+        if (_generatedRows.Count > 0)
+        {
+            GeneratedGroupsList.ItemsSource = _generatedRows;
+            GeneratedGroupsBorder.Visibility = Visibility.Visible;
+        }
 
         PakSummaryText.Text = Loc.F("Dialog.Export7z.SummaryPaksFormat", preview.PakModCount, FormatHelper.FormatBytes(preview.PakTotalBytes));
         DataSummaryText.Text = Loc.F("Dialog.Export7z.SummaryLooseFormat", preview.LooseDataModCount, preview.LooseDataFileCount, FormatHelper.FormatBytes(preview.LooseDataTotalBytes));
         GameSummaryText.Text = Loc.F("Dialog.Export7z.SummaryLooseFormat", preview.LooseGameModCount, preview.LooseGameFileCount, FormatHelper.FormatBytes(preview.LooseGameTotalBytes));
-        LiveGeneratedSummaryText.Text = Loc.F("Dialog.Export7z.SummaryFilesFormat", preview.LiveGeneratedFileCount, FormatHelper.FormatBytes(preview.LiveGeneratedTotalBytes));
         LiveBinSummaryText.Text = Loc.F("Dialog.Export7z.SummaryLooseFormat", preview.LiveBinModCount, preview.LiveBinFileCount, FormatHelper.FormatBytes(preview.LiveBinTotalBytes));
 
         if (preview.MissingModCount > 0 || preview.MissingFileCount > 0 || preview.Warnings.Count > 0)
@@ -55,9 +113,12 @@ public partial class ExportProfileArchiveDialog : Window
         IncludeLooseCheck.IsChecked = hasLoose;
         IncludeLooseCheck.IsEnabled = hasLoose;
 
-        bool hasGen = preview.LiveGeneratedFileCount > 0;
-        IncludeGeneratedCheck.IsChecked = hasGen;
-        IncludeGeneratedCheck.IsEnabled = hasGen;
+        bool hasAnyGenGroups = _generatedRows.Count > 0;
+        bool hasDefaultGen = _generatedRows.Any(r => r.IsSelected);
+        IncludeGeneratedCheck.IsChecked = hasDefaultGen;
+        IncludeGeneratedCheck.IsEnabled = hasAnyGenGroups;
+        IncludeGeneratedCheck.Checked += (_, _) => RefreshGeneratedSummary();
+        IncludeGeneratedCheck.Unchecked += (_, _) => RefreshGeneratedSummary();
 
         bool hasBin = preview.LiveBinFileCount > 0;
         IncludeBinCheck.IsChecked = hasBin;
@@ -66,11 +127,37 @@ public partial class ExportProfileArchiveDialog : Window
         OutputArchivePath = defaultOutputPath;
         IncludePaks = hasPaks;
         IncludeLooseMods = hasLoose;
-        IncludeGeneratedFolder = hasGen;
+        IncludeGeneratedFolder = hasDefaultGen;
+        SelectedGeneratedGroupKeys = _generatedRows
+            .Where(r => r.IsSelected)
+            .Select(r => r.GroupKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         IncludeBinMods = hasBin;
         IncludeOrderJson = true;
         IncludeManifestAndReadme = true;
         CompressionLevel = 1;
+
+        RefreshGeneratedSummary();
+    }
+
+    private void RefreshGeneratedSummary()
+    {
+        bool genChecked = IncludeGeneratedCheck.IsChecked == true && IncludeGeneratedCheck.IsEnabled;
+        List<GeneratedGroupRow> activeGen = genChecked
+            ? _generatedRows.Where(r => r.IsSelected).ToList()
+            : new List<GeneratedGroupRow>();
+
+        int genFiles = activeGen.Sum(r => r.Group.FileCount);
+        long genBytes = activeGen.Sum(r => r.Group.TotalBytes);
+
+        LiveGeneratedSummaryText.Text = Loc.F("Dialog.Export7z.SummaryFilesFormat", genFiles, FormatHelper.FormatBytes(genBytes));
+
+        long totalBytes = _preview.PakTotalBytes +
+                          _preview.LooseDataTotalBytes +
+                          _preview.LooseGameTotalBytes +
+                          genBytes +
+                          _preview.LiveBinTotalBytes;
+        SubtitleText.Text = Loc.F("Dialog.Export7z.Subtitle", _preview.ProfileName, FormatHelper.FormatBytes(totalBytes));
     }
 
     private void OnBrowseClick(object sender, RoutedEventArgs e)
@@ -109,9 +196,14 @@ public partial class ExportProfileArchiveDialog : Window
             path += ".7z";
         }
 
+        HashSet<string> selectedGenKeys = _generatedRows
+            .Where(r => r.IsSelected)
+            .Select(r => r.GroupKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         bool paks = IncludePaksCheck.IsChecked == true && IncludePaksCheck.IsEnabled;
         bool loose = IncludeLooseCheck.IsChecked == true && IncludeLooseCheck.IsEnabled;
-        bool gen = IncludeGeneratedCheck.IsChecked == true && IncludeGeneratedCheck.IsEnabled;
+        bool gen = IncludeGeneratedCheck.IsChecked == true && IncludeGeneratedCheck.IsEnabled && selectedGenKeys.Count > 0;
         bool bin = IncludeBinCheck.IsChecked == true && IncludeBinCheck.IsEnabled;
         bool json = IncludeOrderJsonCheck.IsChecked == true;
         bool manifest = IncludeManifestCheck.IsChecked == true;
@@ -135,6 +227,7 @@ public partial class ExportProfileArchiveDialog : Window
         IncludePaks = paks;
         IncludeLooseMods = loose;
         IncludeGeneratedFolder = gen;
+        SelectedGeneratedGroupKeys = selectedGenKeys;
         IncludeBinMods = bin;
         IncludeOrderJson = json;
         IncludeManifestAndReadme = manifest;

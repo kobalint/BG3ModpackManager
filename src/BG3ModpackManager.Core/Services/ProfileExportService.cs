@@ -20,6 +20,30 @@ public static partial class ProfileExportService
     [GeneratedRegex(@"(\d{1,3})%")]
     private static partial Regex ProgressPercentRegex();
 
+    [GeneratedRegex(@"_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")]
+    private static partial Regex ToolkitUuidSuffixRegex();
+
+    private static readonly HashSet<string> BaseGameGeneratedFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Shared",
+        "SharedDev",
+        "Gustav",
+        "GustavDev",
+        "GustavX",
+        "Honour",
+        "Game",
+        "MainUI",
+        "CrossplayUI",
+        "PhotoMode",
+        "ModBrowser",
+        "DiceSet_01",
+        "DiceSet_02",
+        "DiceSet_03",
+        "DiceSet_04",
+        "DiceSet_05",
+        "DiceSet_06"
+    };
+
     public static string SanitizeFileName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -125,9 +149,11 @@ public static partial class ProfileExportService
             }
         }
 
-        List<(string FullPath, string RelativePath, long Size)> liveGen = DiscoverUntrackedGeneratedFiles(settings, seenDataRelPaths);
-        preview.LiveGeneratedFileCount = liveGen.Count;
-        preview.LiveGeneratedTotalBytes = liveGen.Sum(f => f.Size);
+        List<GeneratedExportFolderGroup> genGroups = DiscoverUntrackedGeneratedGroups(settings, db, seenDataRelPaths);
+        preview.GeneratedGroups = genGroups;
+        List<GeneratedExportFolderGroup> defaultGenGroups = genGroups.Where(g => g.IsSelectedByDefault).ToList();
+        preview.LiveGeneratedFileCount = defaultGenGroups.Sum(g => g.FileCount);
+        preview.LiveGeneratedTotalBytes = defaultGenGroups.Sum(g => g.TotalBytes);
 
         List<(string DisplayName, List<(string FullPath, string RelativePath, long Size)> Files)> liveBin =
             DiscoverUntrackedBinModGroups(settings, seenGameRelPaths);
@@ -313,8 +339,14 @@ public static partial class ProfileExportService
 
             if (options.IncludeGeneratedFolder)
             {
-                List<(string FullPath, string RelativePath, long Size)> liveGen =
-                    DiscoverUntrackedGeneratedFiles(settings, stagedDataRelPaths.Keys);
+                List<GeneratedExportFolderGroup> genGroups =
+                    DiscoverUntrackedGeneratedGroups(settings, db, stagedDataRelPaths.Keys);
+                List<(string FullPath, string RelativePath, long Size)> liveGen = genGroups
+                    .Where(g => options.SelectedGeneratedGroupKeys is not null
+                        ? options.SelectedGeneratedGroupKeys.Contains(g.GroupKey)
+                        : g.IsSelectedByDefault)
+                    .SelectMany(g => g.Files)
+                    .ToList();
                 if (liveGen.Count > 0)
                 {
                     progress?.Report($"Staging {liveGen.Count} live Data/Generated files...");
@@ -483,11 +515,12 @@ public static partial class ProfileExportService
         return false;
     }
 
-    private static List<(string FullPath, string RelativePath, long Size)> DiscoverUntrackedGeneratedFiles(
+    public static List<GeneratedExportFolderGroup> DiscoverUntrackedGeneratedGroups(
         AppSettings settings,
+        LibraryDatabase db,
         ICollection<string> alreadyTrackedDataRelPaths)
     {
-        var results = new List<(string FullPath, string RelativePath, long Size)>();
+        var results = new List<GeneratedExportFolderGroup>();
         if (string.IsNullOrWhiteSpace(settings.DataFolder) || !Directory.Exists(settings.DataFolder))
         {
             return results;
@@ -499,22 +532,91 @@ public static partial class ProfileExportService
             return results;
         }
 
+        var pakFolders = new HashSet<string>(
+            db.Mods
+                .Where(m => m.Kind is ModKind.Pak or ModKind.Hybrid && !string.IsNullOrWhiteSpace(m.FolderName))
+                .Select(m => m.FolderName!),
+            StringComparer.OrdinalIgnoreCase);
+
+        string projectsRoot = Path.Combine(settings.DataFolder, "Projects");
+        var byGroup = new SortedDictionary<string, (string FolderName, List<(string FullPath, string RelativePath, long Size)> Files)>(StringComparer.OrdinalIgnoreCase);
+
         foreach (string fullPath in Directory.EnumerateFiles(generatedRoot, "*", SearchOption.AllDirectories)
                      .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
             string rel = Path.GetRelativePath(settings.DataFolder, fullPath).Replace('\\', '/');
-            if (rel.StartsWith("Generated/Public/Engine/Assets/Editor/", StringComparison.OrdinalIgnoreCase) ||
+            if (rel.StartsWith("Generated/Public/Engine/", StringComparison.OrdinalIgnoreCase) ||
+                rel.Equals("Generated/Public/Engine", StringComparison.OrdinalIgnoreCase) ||
                 rel.Contains(".bg3mpm_orig", StringComparison.OrdinalIgnoreCase) ||
+                rel.EndsWith(".bak", StringComparison.OrdinalIgnoreCase) ||
+                rel.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
                 rel.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
                 alreadyTrackedDataRelPaths.Contains(rel))
             {
                 continue;
             }
 
-            results.Add((fullPath, rel, new FileInfo(fullPath).Length));
+            string[] parts = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string groupKey;
+            string folderName;
+            if (parts.Length >= 3 &&
+                parts[0].Equals("Generated", StringComparison.OrdinalIgnoreCase) &&
+                parts[1].Equals("Public", StringComparison.OrdinalIgnoreCase))
+            {
+                folderName = parts[2];
+                groupKey = $"Generated/Public/{folderName}";
+            }
+            else if (parts.Length >= 2 && parts[0].Equals("Generated", StringComparison.OrdinalIgnoreCase))
+            {
+                folderName = parts[1];
+                groupKey = $"Generated/{folderName}";
+            }
+            else
+            {
+                folderName = "Generated";
+                groupKey = "Generated";
+            }
+
+            if (!byGroup.TryGetValue(groupKey, out var entry))
+            {
+                entry = (folderName, new List<(string, string, long)>());
+                byGroup[groupKey] = entry;
+            }
+
+            entry.Files.Add((fullPath, rel, new FileInfo(fullPath).Length));
         }
 
-        return results;
+        foreach (KeyValuePair<string, (string FolderName, List<(string FullPath, string RelativePath, long Size)> Files)> kv in byGroup)
+        {
+            string groupKey = kv.Key;
+            string folderName = kv.Value.FolderName;
+            List<(string FullPath, string RelativePath, long Size)> files = kv.Value.Files;
+
+            bool isBaseGameTarget = BaseGameGeneratedFolders.Contains(folderName);
+            bool hasUuidSuffix = ToolkitUuidSuffixRegex().IsMatch(folderName);
+            bool existsInProjects = !isBaseGameTarget &&
+                                    Directory.Exists(projectsRoot) &&
+                                    Directory.Exists(Path.Combine(projectsRoot, folderName));
+            bool matchesPakFolder = !isBaseGameTarget && pakFolders.Contains(folderName);
+            bool isToolkitProject = !isBaseGameTarget && (hasUuidSuffix || existsInProjects || matchesPakFolder);
+            bool isSelectedByDefault = isBaseGameTarget && !isToolkitProject;
+
+            results.Add(new GeneratedExportFolderGroup
+            {
+                GroupKey = groupKey,
+                FolderName = folderName,
+                FileCount = files.Count,
+                TotalBytes = files.Sum(f => f.Size),
+                IsSelectedByDefault = isSelectedByDefault,
+                IsToolkitProject = isToolkitProject,
+                Files = files
+            });
+        }
+
+        return results
+            .OrderByDescending(g => g.IsSelectedByDefault)
+            .ThenBy(g => g.GroupKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static List<(string DisplayName, List<(string FullPath, string RelativePath, long Size)> Files)> DiscoverUntrackedBinModGroups(
