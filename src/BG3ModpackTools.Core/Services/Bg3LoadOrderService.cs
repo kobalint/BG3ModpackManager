@@ -111,6 +111,8 @@ public static class Bg3LoadOrderService
     /// </summary>
     public static void WriteModSettingsLsx(string lsxPath, IEnumerable<ModEntry> orderedMods)
     {
+        GameProcessGuard.EnsureGameNotRunning("updating BG3 modsettings.lsx");
+
         if (string.IsNullOrWhiteSpace(lsxPath))
         {
             throw new ArgumentException("modsettings.lsx path is empty.", nameof(lsxPath));

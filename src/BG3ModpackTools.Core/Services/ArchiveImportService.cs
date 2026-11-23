@@ -153,6 +153,17 @@ public static class ArchiveImportService
             ? db.Profiles.FirstOrDefault(p => p.Id == assignToProfileId)
             : null;
 
+        if (profile is not null &&
+            ModLibraryService.WouldModifyActiveLoadOrder(
+                profile,
+                settings,
+                db,
+                writeLinkedJson: true,
+                writeModSettingsLsxIfActive: installActiveNow))
+        {
+            GameProcessGuard.EnsureGameNotRunning($"updating active profile '{profile.Name}' load order");
+        }
+
         bool combineIntoHybrid = plan.PackageAsSingleHybridMod &&
                                  pakCandidates.Count == 1 &&
                                  looseCandidates.Count > 0 &&

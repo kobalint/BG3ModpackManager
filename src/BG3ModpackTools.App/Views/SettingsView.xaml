@@ -157,6 +157,30 @@
                 </StackPanel>
             </Border>
 
+            <!-- Script Extender Card -->
+            <Border Style="{StaticResource CardBorder}" Padding="16" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{helpers:Loc Settings.Card.ScriptExtender}" FontSize="14.5" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock Style="{StaticResource MutedCaption}" Text="{helpers:Loc Settings.ScriptExtenderDesc}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ScriptExtenderStatusText" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,10" />
+
+                    <WrapPanel Orientation="Horizontal">
+                        <Button x:Name="InstallScriptExtenderButton"
+                                Style="{StaticResource AccentButton}"
+                                Click="OnInstallScriptExtenderClick"
+                                Margin="0,0,6,6" />
+                        <Button x:Name="RemoveScriptExtenderButton"
+                                Style="{StaticResource DangerButton}"
+                                Content="{helpers:Loc Settings.Btn.RemoveSe}"
+                                Click="OnRemoveScriptExtenderClick"
+                                Margin="0,0,6,6" />
+                        <Button Content="{helpers:Loc Settings.Btn.OpenSeReleases}"
+                                Click="OnOpenScriptExtenderReleasesClick"
+                                Margin="0,0,0,6" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Behavior Card -->
             <Border Style="{StaticResource CardBorder}" Padding="16" Margin="0,0,0,16">
                 <StackPanel>

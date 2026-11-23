@@ -174,6 +174,7 @@ public partial class MainWindow : Window
             QuickActionCol1.Width = GridLength.Auto;
             QuickActionCol2.Width = GridLength.Auto;
             QuickActionCol3.Width = GridLength.Auto;
+            QuickActionCol4.Width = GridLength.Auto;
 
             Grid.SetRow(StartBg3Button, 0);
             Grid.SetColumn(StartBg3Button, 0);
@@ -193,8 +194,13 @@ public partial class MainWindow : Window
 
             Grid.SetRow(OpenVaultFolderButton, 0);
             Grid.SetColumn(OpenVaultFolderButton, 3);
-            OpenVaultFolderButton.Margin = new Thickness(0);
+            OpenVaultFolderButton.Margin = new Thickness(0, 0, 6, 0);
             OpenVaultFolderButton.Padding = narrowFolderPad;
+
+            Grid.SetRow(InstallScriptExtenderButton, 0);
+            Grid.SetColumn(InstallScriptExtenderButton, 4);
+            InstallScriptExtenderButton.Margin = new Thickness(0);
+            InstallScriptExtenderButton.Padding = narrowFolderPad;
 
             SidebarFooterBorder.Visibility = Visibility.Collapsed;
             StatusBarStatsText.Visibility = Visibility.Visible;
@@ -236,6 +242,7 @@ public partial class MainWindow : Window
             QuickActionCol1.Width = new GridLength(0);
             QuickActionCol2.Width = new GridLength(0);
             QuickActionCol3.Width = new GridLength(0);
+            QuickActionCol4.Width = new GridLength(0);
 
             double gap = compactHeight ? 4 : 6;
             Thickness folderPad = compactHeight ? new Thickness(10, 4, 10, 4) : new Thickness(10, 5, 10, 5);
@@ -257,8 +264,13 @@ public partial class MainWindow : Window
 
             Grid.SetRow(OpenVaultFolderButton, 3);
             Grid.SetColumn(OpenVaultFolderButton, 0);
-            OpenVaultFolderButton.Margin = new Thickness(0);
+            OpenVaultFolderButton.Margin = new Thickness(0, 0, 0, gap);
             OpenVaultFolderButton.Padding = folderPad;
+
+            Grid.SetRow(InstallScriptExtenderButton, 4);
+            Grid.SetColumn(InstallScriptExtenderButton, 0);
+            InstallScriptExtenderButton.Margin = new Thickness(0);
+            InstallScriptExtenderButton.Padding = folderPad;
 
             SidebarFooterBorder.Padding = compactHeight ? new Thickness(14, 8, 14, 8) : new Thickness(14, 12, 14, 12);
             SidebarFooterBorder.Visibility = Visibility.Visible;
@@ -391,6 +403,8 @@ public partial class MainWindow : Window
         string rendererLong = Loc.T(renderer == Bg3LaunchRenderer.DirectX11 ? "App.Renderer.DirectX11" : "App.Renderer.Vulkan");
         string rendererShort = Loc.T(renderer == Bg3LaunchRenderer.DirectX11 ? "App.Renderer.DirectX11Short" : "App.Renderer.VulkanShort");
 
+        ScriptExtenderStatus seStatus = ScriptExtenderService.GetStatus(_state.Settings);
+
         if (tier == LayoutTier.Narrow)
         {
             StartBg3TitleText.Text = Loc.F("Nav.StartBg3InlineFormat", rendererShort);
@@ -398,6 +412,9 @@ public partial class MainWindow : Window
             OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolderCompact");
             OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolderCompact");
             OpenVaultFolderText.Text = Loc.T("Nav.OpenVaultFolderCompact");
+            InstallScriptExtenderText.Text = Loc.T(seStatus.IsInstalled
+                ? "Nav.ScriptExtenderInstalledNarrow"
+                : "Nav.InstallScriptExtenderNarrow");
         }
         else if (tier == LayoutTier.Medium)
         {
@@ -407,6 +424,9 @@ public partial class MainWindow : Window
             OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolderCompact");
             OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolderCompact");
             OpenVaultFolderText.Text = Loc.T("Nav.OpenVaultFolderCompact");
+            InstallScriptExtenderText.Text = Loc.T(seStatus.IsInstalled
+                ? "Nav.ScriptExtenderInstalledCompact"
+                : "Nav.InstallScriptExtenderCompact");
         }
         else
         {
@@ -416,6 +436,9 @@ public partial class MainWindow : Window
             OpenModsFolderText.Text = Loc.T("Nav.OpenModsFolder");
             OpenGameFolderText.Text = Loc.T("Nav.OpenGameFolder");
             OpenVaultFolderText.Text = Loc.T("Nav.OpenVaultFolder");
+            InstallScriptExtenderText.Text = Loc.T(seStatus.IsInstalled
+                ? "Nav.ScriptExtenderInstalled"
+                : "Nav.InstallScriptExtender");
         }
 
         Bg3LaunchResolution resolution = GameLauncherService.ResolveExecutable(_state.Settings);
@@ -439,6 +462,29 @@ public partial class MainWindow : Window
         OpenVaultFolderButton.ToolTip = string.IsNullOrWhiteSpace(vaultFolder)
             ? Loc.T("App.OpenVaultFolder.TooltipNotSet")
             : Loc.F("App.OpenVaultFolder.TooltipFormat", vaultFolder);
+
+        if (!seStatus.GameBinFolderAvailable)
+        {
+            InstallScriptExtenderButton.ToolTip = Loc.T("App.ScriptExtender.TooltipNotConfigured");
+        }
+        else if (seStatus.IsInstalled)
+        {
+            string verLabel = !string.IsNullOrWhiteSpace(seStatus.RuntimeVersion)
+                ? $"{seStatus.RuntimeVersion}, Updater v{seStatus.UpdaterVersion ?? "?"}"
+                : $"Updater v{seStatus.UpdaterVersion ?? "?"}";
+            InstallScriptExtenderButton.ToolTip = Loc.F(
+                "App.ScriptExtender.TooltipInstalledFormat",
+                verLabel,
+                seStatus.DWriteDllPath);
+        }
+        else if (seStatus.IsForeignDWriteDll)
+        {
+            InstallScriptExtenderButton.ToolTip = Loc.F("App.ScriptExtender.TooltipForeignFormat", seStatus.DWriteDllPath);
+        }
+        else
+        {
+            InstallScriptExtenderButton.ToolTip = Loc.F("App.ScriptExtender.TooltipNotInstalledFormat", seStatus.BinFolderPath);
+        }
     }
 
     private void OnNavChecked(object sender, RoutedEventArgs e)
@@ -538,6 +584,9 @@ public partial class MainWindow : Window
 
     private void OnOpenVaultFolderClick(object sender, RoutedEventArgs e)
         => OpenConfiguredFolder(_state.Settings.VaultFolder);
+
+    private async void OnInstallScriptExtenderClick(object sender, RoutedEventArgs e)
+        => await ScriptExtenderUiHelper.DownloadAndInstallInteractiveAsync(_state, this);
 
     private void OpenConfiguredFolder(string? path)
     {
@@ -652,7 +701,18 @@ public partial class MainWindow : Window
                 string? selectedProfileId = dlg.SelectedProfileId;
                 bool installActiveNow = dlg.InstallActiveNow;
 
-                if (installActiveNow && !_state.EnsureGameClosedBeforeFileOps(this))
+                ModProfile? targetProfile = !string.IsNullOrWhiteSpace(selectedProfileId)
+                    ? _state.Db.Profiles.FirstOrDefault(p => string.Equals(p.Id, selectedProfileId, StringComparison.OrdinalIgnoreCase))
+                    : null;
+                bool willWriteActiveOrder = targetProfile is not null &&
+                    ModLibraryService.WouldModifyActiveLoadOrder(
+                        targetProfile,
+                        _state.Settings,
+                        _state.Db,
+                        writeLinkedJson: true,
+                        writeModSettingsLsxIfActive: installActiveNow);
+
+                if ((installActiveNow || willWriteActiveOrder) && !_state.EnsureGameClosedBeforeFileOps(this))
                 {
                     _state.Log(Loc.F("App.ImportCancelledBg3Running", plan.SourceName));
                     continue;

@@ -18,6 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("LoadOrderReviewTests", LoadOrderReviewTests.RunAllAsync),
     ("GameProcessGuardTests", GameProcessGuardTests.RunAllAsync),
     ("ProfileExportTests", ProfileExportTests.RunAllAsync),
+    ("ScriptExtenderTests", ScriptExtenderTests.RunAllAsync),
     ("LocalizationTests", () => { LocalizationTests.RunAll(); return Task.CompletedTask; })
 };
 

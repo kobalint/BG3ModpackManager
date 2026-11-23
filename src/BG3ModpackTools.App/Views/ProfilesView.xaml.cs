@@ -790,6 +790,15 @@ public partial class ProfilesView : UserControl
             return;
         }
 
+        if (string.Equals(profile.Id, _state.Db.ActiveProfileId, StringComparison.OrdinalIgnoreCase) ||
+            ModLibraryService.IsPathMatchingActiveProfileJson(dlg.FileName, _state.Db))
+        {
+            if (!_state.EnsureGameClosedBeforeFileOps(Window.GetWindow(this)))
+            {
+                return;
+            }
+        }
+
         var modMap = _state.Db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
         var entries = profile.ModIds
             .Select(id => modMap.TryGetValue(id, out ModEntry? m) ? m : null)
@@ -1028,11 +1037,21 @@ public partial class ProfilesView : UserControl
             return;
         }
 
+        if (!EnsureAllowedToModifyProfileLoadOrder(profile))
+        {
+            return;
+        }
+
         var existingSet = new HashSet<string>(profile.ModIds, StringComparer.OrdinalIgnoreCase);
         List<ModEntry> available = _state.Db.Mods.Where(m => !existingSet.Contains(m.Id)).ToList();
 
         var dlg = new SelectModsDialog(available) { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true || dlg.SelectedModIds.Count == 0)
+        {
+            return;
+        }
+
+        if (!EnsureAllowedToModifyProfileLoadOrder(profile))
         {
             return;
         }
@@ -1067,7 +1086,27 @@ public partial class ProfilesView : UserControl
             return;
         }
 
+        var modById = _state.Db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
         var removeSet = new HashSet<string>(selectedRows.Select(r => r.ModId), StringComparer.OrdinalIgnoreCase);
+        bool isProfileActive = string.Equals(_state.Db.ActiveProfileId, profile.Id, StringComparison.OrdinalIgnoreCase);
+        bool anyRemovedWasActive = selectedRows.Any(r => r.Mod?.Location == ModLocation.Active);
+        bool hasRemainingActiveOrderable = profile.ModIds.Any(id =>
+            !removeSet.Contains(id) &&
+            modById.TryGetValue(id, out ModEntry? m) &&
+            m.Location == ModLocation.Active &&
+            !ModLibraryService.IsJsonCompanionMod(m));
+
+        bool onlyActiveModsInJson = isProfileActive || anyRemovedWasActive || hasRemainingActiveOrderable;
+        bool forceWriteModSettingsLsx = isProfileActive ||
+                                        string.IsNullOrWhiteSpace(_state.Db.ActiveProfileId) ||
+                                        anyRemovedWasActive ||
+                                        hasRemainingActiveOrderable;
+
+        if (!EnsureAllowedToModifyProfileLoadOrder(profile, forceWriteModSettingsLsx: forceWriteModSettingsLsx))
+        {
+            return;
+        }
+
         profile.ModIds.RemoveAll(id => removeSet.Contains(id));
         profile.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -1075,7 +1114,9 @@ public partial class ProfilesView : UserControl
         CommitProfileLoadOrderEdit(
             profile,
             restoredSelectionIds: null,
-            logMessage: Loc.F("Profiles.RemoveMod.Log", removedLabel, profile.Name));
+            logMessage: Loc.F("Profiles.RemoveMod.Log", removedLabel, profile.Name),
+            onlyActiveModsInJson: onlyActiveModsInJson,
+            forceWriteModSettingsLsx: forceWriteModSettingsLsx);
     }
 
     private void OnMoveUpClick(object sender, RoutedEventArgs e) => MoveSelectedMods(-1);
@@ -1098,7 +1139,23 @@ public partial class ProfilesView : UserControl
             selectedIds.Add(singleRow.ModId);
         }
 
-        if (selectedIds.Count == 0 || !ModLibraryService.MoveProfileModsByDelta(profile, selectedIds, delta))
+        if (selectedIds.Count == 0)
+        {
+            return;
+        }
+
+        var previewProfile = new ModProfile { Id = profile.Id, Name = profile.Name, ModIds = new List<string>(profile.ModIds) };
+        if (!ModLibraryService.MoveProfileModsByDelta(previewProfile, selectedIds, delta))
+        {
+            return;
+        }
+
+        if (!EnsureAllowedToModifyProfileLoadOrder(profile))
+        {
+            return;
+        }
+
+        if (!ModLibraryService.MoveProfileModsByDelta(profile, selectedIds, delta))
         {
             return;
         }
@@ -1109,10 +1166,32 @@ public partial class ProfilesView : UserControl
             logMessage: Loc.F("Profiles.Reorder.Log", selectedIds.Count, profile.Name));
     }
 
+    private bool EnsureAllowedToModifyProfileLoadOrder(
+        ModProfile profile,
+        bool writeLinkedJson = true,
+        bool writeModSettingsLsxIfActive = true,
+        bool forceWriteModSettingsLsx = false)
+    {
+        if (!ModLibraryService.WouldModifyActiveLoadOrder(
+                profile,
+                _state.Settings,
+                _state.Db,
+                writeLinkedJson,
+                writeModSettingsLsxIfActive,
+                forceWriteModSettingsLsx))
+        {
+            return true;
+        }
+
+        return _state.EnsureGameClosedBeforeFileOps(Window.GetWindow(this));
+    }
+
     private void CommitProfileLoadOrderEdit(
         ModProfile profile,
         IReadOnlyList<string>? restoredSelectionIds,
-        string logMessage)
+        string logMessage,
+        bool? onlyActiveModsInJson = null,
+        bool forceWriteModSettingsLsx = false)
     {
         if (!string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
         {
@@ -1125,7 +1204,14 @@ public partial class ProfilesView : UserControl
         string? syncError = null;
         try
         {
-            sync = ModLibraryService.WriteProfileLoadOrderFiles(profile, _state.Settings, _state.Db);
+            sync = ModLibraryService.WriteProfileLoadOrderFiles(
+                profile,
+                _state.Settings,
+                _state.Db,
+                writeLinkedJson: true,
+                writeModSettingsLsxIfActive: true,
+                onlyActiveModsInJson: onlyActiveModsInJson,
+                forceWriteModSettingsLsx: forceWriteModSettingsLsx);
         }
         catch (Exception ex)
         {
@@ -1396,6 +1482,22 @@ public partial class ProfilesView : UserControl
             return;
         }
 
+        if (draggedIds.Contains(targetRow.ModId, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var previewProfile = new ModProfile { Id = profile.Id, Name = profile.Name, ModIds = new List<string>(profile.ModIds) };
+        if (!ModLibraryService.ReorderProfileMods(previewProfile, draggedIds, targetRow.ModId, insertAfter))
+        {
+            return;
+        }
+
+        if (!EnsureAllowedToModifyProfileLoadOrder(profile))
+        {
+            return;
+        }
+
         if (!ModLibraryService.ReorderProfileMods(profile, draggedIds, targetRow.ModId, insertAfter))
         {
             return;
@@ -1534,6 +1636,11 @@ public partial class ProfilesView : UserControl
         try
         {
             ModEntry mod = row.Mod;
+            ModProfile? profile = GetSelectedProfile();
+            bool movedOrActivated = false;
+            bool activated = false;
+            string? actionLog = null;
+
             if (mod.Location == ModLocation.Vault)
             {
                 if (!string.IsNullOrWhiteSpace(mod.PakFileName) &&
@@ -1549,16 +1656,57 @@ public partial class ProfilesView : UserControl
                 }
 
                 ModLibraryService.ActivateModFromVault(mod, _state.Settings);
-                _state.Log(Loc.F("Profiles.VaultMove.ActivatedLog", mod.DisplayName));
+                actionLog = Loc.F("Profiles.VaultMove.ActivatedLog", mod.DisplayName);
+                movedOrActivated = true;
+                activated = true;
             }
             else if (mod.Location is ModLocation.Active or ModLocation.Partial)
             {
                 ModLibraryService.MoveModToVault(mod, _state.Settings);
-                _state.Log(Loc.F("Profiles.VaultMove.MovedLog", mod.DisplayName));
+                actionLog = Loc.F("Profiles.VaultMove.MovedLog", mod.DisplayName);
+                movedOrActivated = true;
+            }
+
+            if (!movedOrActivated)
+            {
+                return;
+            }
+
+            if (activated && profile is not null)
+            {
+                ModLibraryService.ReconcileActiveProfileId(_state.Settings, _state.Db, preferredProfileId: profile.Id);
+            }
+
+            ModLibraryService.LoadOrderSyncResult? sync = null;
+            string? syncError = null;
+            if (profile is not null)
+            {
+                try
+                {
+                    sync = ModLibraryService.WriteProfileLoadOrderFiles(
+                        profile,
+                        _state.Settings,
+                        _state.Db,
+                        writeLinkedJson: true,
+                        writeModSettingsLsxIfActive: true,
+                        onlyActiveModsInJson: true,
+                        forceWriteModSettingsLsx: true);
+                }
+                catch (Exception ex)
+                {
+                    syncError = ex.Message;
+                }
             }
 
             _state.SaveLibraryAndCache();
+            if (!string.IsNullOrWhiteSpace(actionLog))
+            {
+                _state.Log(actionLog);
+            }
+
+            LogSyncResult(sync, syncError);
             _state.NotifyStateChanged();
+            RestoreProfileGridSelection(new[] { mod.Id });
         }
         catch (Exception ex)
         {

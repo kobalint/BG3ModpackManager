@@ -1686,16 +1686,78 @@ public static class ModLibraryService
     }
 
     /// <summary>
+    /// Returns true if <paramref name="jsonPath"/> matches the currently active profile's linked BG3MM JSON path.
+    /// </summary>
+    public static bool IsPathMatchingActiveProfileJson(string? jsonPath, LibraryDatabase db)
+    {
+        if (string.IsNullOrWhiteSpace(jsonPath) || string.IsNullOrWhiteSpace(db.ActiveProfileId))
+        {
+            return false;
+        }
+
+        ModProfile? activeProfile = db.Profiles.FirstOrDefault(p =>
+            string.Equals(p.Id, db.ActiveProfileId, StringComparison.OrdinalIgnoreCase));
+        if (activeProfile is null || string.IsNullOrWhiteSpace(activeProfile.LinkedOrderJsonPath))
+        {
+            return false;
+        }
+
+        (string candidateFull, _) = GetOrderJsonKeys(jsonPath);
+        (string activeFull, _) = GetOrderJsonKeys(activeProfile.LinkedOrderJsonPath);
+        return !string.IsNullOrEmpty(candidateFull) &&
+               string.Equals(candidateFull, activeFull, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns true if syncing <paramref name="profile"/> with the given options would write the active profile's
+    /// BG3MM load order JSON or active BG3 modsettings.lsx file.
+    /// </summary>
+    public static bool WouldModifyActiveLoadOrder(
+        ModProfile profile,
+        AppSettings settings,
+        LibraryDatabase db,
+        bool writeLinkedJson = true,
+        bool writeModSettingsLsxIfActive = true,
+        bool forceWriteModSettingsLsx = false)
+    {
+        bool isProfileActive = string.Equals(db.ActiveProfileId, profile.Id, StringComparison.OrdinalIgnoreCase);
+        bool willWriteLsx = writeModSettingsLsxIfActive &&
+                            settings.SyncModSettingsLsxOnSwitch &&
+                            !string.IsNullOrWhiteSpace(settings.ModSettingsLsxPath) &&
+                            (forceWriteModSettingsLsx || isProfileActive);
+        bool willWriteJson = writeLinkedJson && !string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath);
+        bool targetsActiveJson = willWriteJson &&
+                                 (isProfileActive ||
+                                  forceWriteModSettingsLsx ||
+                                  IsPathMatchingActiveProfileJson(profile.LinkedOrderJsonPath, db));
+
+        return willWriteLsx || targetsActiveJson;
+    }
+
+    /// <summary>
     /// Writes a profile's linked BG3ModManager .json load order (updating companion mod links)
-    /// and updates BG3's modsettings.lsx if the profile is active and LSX syncing is enabled.
+    /// and updates BG3's modsettings.lsx if the profile is active (or forced) and LSX syncing is enabled.
     /// </summary>
     public static LoadOrderSyncResult WriteProfileLoadOrderFiles(
         ModProfile profile,
         AppSettings settings,
         LibraryDatabase db,
         bool writeLinkedJson = true,
-        bool writeModSettingsLsxIfActive = true)
+        bool writeModSettingsLsxIfActive = true,
+        bool? onlyActiveModsInJson = null,
+        bool forceWriteModSettingsLsx = false)
     {
+        if (WouldModifyActiveLoadOrder(
+                profile,
+                settings,
+                db,
+                writeLinkedJson,
+                writeModSettingsLsxIfActive,
+                forceWriteModSettingsLsx))
+        {
+            GameProcessGuard.EnsureGameNotRunning($"updating active load order for '{profile.Name}'");
+        }
+
         var modById = db.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
         var seenUuids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var orderableMods = new List<ModEntry>();
@@ -1720,13 +1782,20 @@ public static class ModLibraryService
             }
         }
 
+        var activeOrderableMods = orderableMods
+            .Where(m => m.Location == ModLocation.Active)
+            .ToList();
+        bool isProfileActive = string.Equals(db.ActiveProfileId, profile.Id, StringComparison.OrdinalIgnoreCase);
+        bool useActiveOnlyForJson = onlyActiveModsInJson ?? (isProfileActive || activeOrderableMods.Count > 0);
+
         bool jsonWritten = false;
         string? jsonPath = null;
         int jsonCount = 0;
 
         if (writeLinkedJson && !string.IsNullOrWhiteSpace(profile.LinkedOrderJsonPath))
         {
-            var entries = orderableMods
+            List<ModEntry> jsonSourceMods = useActiveOnlyForJson ? activeOrderableMods : orderableMods;
+            var entries = jsonSourceMods
                 .Select(m => new Bg3OrderEntry { Uuid = m.Uuid!, Name = m.DisplayName })
                 .ToList();
             Bg3LoadOrderService.SaveOrderJson(profile.LinkedOrderJsonPath, entries);
@@ -1745,11 +1814,8 @@ public static class ModLibraryService
         if (writeModSettingsLsxIfActive &&
             settings.SyncModSettingsLsxOnSwitch &&
             !string.IsNullOrWhiteSpace(settings.ModSettingsLsxPath) &&
-            string.Equals(db.ActiveProfileId, profile.Id, StringComparison.OrdinalIgnoreCase))
+            (forceWriteModSettingsLsx || isProfileActive))
         {
-            var activeOrderableMods = orderableMods
-                .Where(m => m.Location == ModLocation.Active)
-                .ToList();
             Bg3LoadOrderService.WriteModSettingsLsx(settings.ModSettingsLsxPath, activeOrderableMods);
 
             lsxWritten = true;

@@ -17,6 +17,7 @@ internal static class ArchiveImportTests
         await TestReimportRepairsMissingAndOverwrittenLooseAndPakModsAsync();
         await TestDeeplyNestedBinAndGeneratedWithPakImportAsync();
         await TestImportAndDragReorderAutoSyncBg3MmJsonAndLsxAsync();
+        await TestProfileVaultActivateAndRemoveLoadOrderSyncAsync();
         await TestZipSlipRejectedAsync();
         TestDeletableArchiveExtensionDetection();
     }
@@ -816,6 +817,201 @@ internal static class ArchiveImportTests
         TestAssert.Equal(2, lsxAfterUninstall.Count, "LSX updated automatically after uninstalling ModB");
         TestAssert.EqualIgnoreCase(uuidA, lsxAfterUninstall[0].Uuid, "After uninstall: LSX[0] == ModA");
         TestAssert.EqualIgnoreCase(uuidC, lsxAfterUninstall[1].Uuid, "After uninstall: LSX[1] == ModC");
+    }
+
+    private static async Task TestProfileVaultActivateAndRemoveLoadOrderSyncAsync()
+    {
+        using var sandbox = new TempSandbox();
+        var cache = new PakMetadataCache();
+
+        string uuidA = "aaaaaaaa-1111-1111-1111-000000000001";
+        string uuidB = "bbbbbbbb-2222-2222-2222-000000000002";
+        string uuidC = "cccccccc-3333-3333-3333-000000000003";
+        string uuidVault1 = "dddddddd-4444-4444-4444-000000000004";
+        string uuidVault2 = "eeeeeeee-5555-5555-5555-000000000005";
+
+        foreach ((string fileName, string name, string uuid) in new[]
+        {
+            ("ModA.pak", "Mod A", uuidA),
+            ("ModB.pak", "Mod B", uuidB),
+            ("ModC.pak", "Mod C", uuidC)
+        })
+        {
+            TestPakBuilder.CreatePakV18(Path.Combine(sandbox.Settings.ModsFolder, fileName), new[]
+            {
+                ($"Mods/{Path.GetFileNameWithoutExtension(fileName)}/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx(name, uuid, Path.GetFileNameWithoutExtension(fileName))), TestPakBuilder.PayloadCompression.None)
+            });
+        }
+
+        await ModLibraryService.ScanAndAdoptActiveModsAsync(sandbox.Settings, sandbox.Db, cache);
+        ModEntry modA = sandbox.Db.Mods.Single(m => m.Uuid == uuidA);
+        ModEntry modB = sandbox.Db.Mods.Single(m => m.Uuid == uuidB);
+        ModEntry modC = sandbox.Db.Mods.Single(m => m.Uuid == uuidC);
+
+        // Also stage two Vault-only mods for inactive-profile isolation test
+        string vaultStage = Path.Combine(sandbox.Root, "vault_stage");
+        TestPakBuilder.CreatePakV18(Path.Combine(vaultStage, "VaultOnly1.pak"), new[]
+        {
+            ("Mods/VaultOnly1/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("Vault Only 1", uuidVault1, "VaultOnly1")), TestPakBuilder.PayloadCompression.None)
+        });
+        TestPakBuilder.CreatePakV18(Path.Combine(vaultStage, "VaultOnly2.pak"), new[]
+        {
+            ("Mods/VaultOnly2/meta.lsx", Encoding.UTF8.GetBytes(TestPakBuilder.BuildMetaLsx("Vault Only 2", uuidVault2, "VaultOnly2")), TestPakBuilder.PayloadCompression.None)
+        });
+        await ModLibraryService.BulkImportFromBackupFolderAsync(vaultStage, sandbox.Settings, sandbox.Db, cache, moveInsteadOfCopy: true);
+        ModEntry vaultOnly1 = sandbox.Db.Mods.Single(m => m.Uuid == uuidVault1);
+        ModEntry vaultOnly2 = sandbox.Db.Mods.Single(m => m.Uuid == uuidVault2);
+
+        string loosePath = Path.Combine(sandbox.Settings.GameFolder, "bin", "NativeMods", "CameraLoose.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(loosePath)!);
+        await File.WriteAllBytesAsync(loosePath, new byte[] { 1, 2, 3, 4 });
+        var looseMod = new ModEntry
+        {
+            Id = "loose-vault-sync-01",
+            Kind = ModKind.LooseGame,
+            DisplayName = "Camera Loose",
+            ContentHash = await HashService.ComputeFileSha256Async(loosePath),
+            Location = ModLocation.Active,
+            TrackedFiles = new List<TrackedFileRecord>
+            {
+                new()
+                {
+                    Target = TrackedFileTarget.GameFolder,
+                    RelativePath = "bin/NativeMods/CameraLoose.dll",
+                    FileSizeBytes = 4,
+                    Sha256 = await HashService.ComputeFileSha256Async(loosePath)
+                }
+            }
+        };
+        sandbox.Db.Mods.Add(looseMod);
+
+        string orderJsonPath = Path.Combine(sandbox.Settings.OrdersFolder, "ProfileVaultSync.json");
+        var profile = new ModProfile
+        {
+            Name = "Vault Sync Profile",
+            LinkedOrderJsonPath = orderJsonPath,
+            ModIds = new List<string> { modA.Id, modB.Id, modC.Id, looseMod.Id }
+        };
+        sandbox.Db.Profiles.Add(profile);
+        sandbox.Db.ActiveProfileId = profile.Id;
+
+        ModLibraryService.WriteProfileLoadOrderFiles(profile, sandbox.Settings, sandbox.Db);
+
+        // 1. Send ModB to Vault -> ModB stays in profile.ModIds, but disappears from JSON and modsettings.lsx
+        ModLibraryService.MoveModToVault(modB, sandbox.Settings);
+        TestAssert.Equal(ModLocation.Vault, modB.Location, "ModB is in Vault");
+
+        ModLibraryService.LoadOrderSyncResult vaultSync = ModLibraryService.WriteProfileLoadOrderFiles(
+            profile,
+            sandbox.Settings,
+            sandbox.Db,
+            writeLinkedJson: true,
+            writeModSettingsLsxIfActive: true,
+            onlyActiveModsInJson: true,
+            forceWriteModSettingsLsx: true);
+
+        TestAssert.True(vaultSync.JsonWritten && vaultSync.LsxWritten, "Vault action syncs both JSON and modsettings.lsx");
+        TestAssert.Equal(4, profile.ModIds.Count, "Vaulting ModB keeps it in profile.ModIds");
+        TestAssert.True(profile.ModIds.Contains(modB.Id), "Profile still contains vaulted ModB");
+
+        Bg3LoadOrderFile jsonAfterVault = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.Equal(2, jsonAfterVault.Order.Count, "JSON has 2 active mods after vaulting ModB");
+        TestAssert.EqualIgnoreCase(uuidA, jsonAfterVault.Order[0].Uuid, "JSON[0] == ModA");
+        TestAssert.EqualIgnoreCase(uuidC, jsonAfterVault.Order[1].Uuid, "JSON[1] == ModC");
+
+        List<ModSettingsEntry> lsxAfterVault = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.Equal(2, lsxAfterVault.Count, "modsettings.lsx has 2 active mods after vaulting ModB");
+        TestAssert.EqualIgnoreCase(uuidA, lsxAfterVault[0].Uuid, "LSX[0] == ModA");
+        TestAssert.EqualIgnoreCase(uuidC, lsxAfterVault[1].Uuid, "LSX[1] == ModC");
+
+        // 2. Reordering while ModB is in Vault still keeps ModB in profile.ModIds and excluded from active JSON/LSX
+        TestAssert.True(ModLibraryService.ReorderProfileMods(profile, new[] { modC.Id }, modA.Id, insertAfter: false), "Move ModC before ModA");
+        ModLibraryService.WriteProfileLoadOrderFiles(profile, sandbox.Settings, sandbox.Db);
+        TestAssert.Equal(4, profile.ModIds.Count, "Profile retains all 4 mods (including vaulted ModB)");
+        TestAssert.Equal(modB.Id, profile.ModIds[2], "ModB remains in profile slot 2");
+
+        Bg3LoadOrderFile jsonAfterReorder = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.EqualIgnoreCase(uuidC, jsonAfterReorder.Order[0].Uuid, "After reorder while ModB vaulted: JSON[0] == ModC");
+        TestAssert.EqualIgnoreCase(uuidA, jsonAfterReorder.Order[1].Uuid, "After reorder while ModB vaulted: JSON[1] == ModA");
+
+        // 3. Activate ModB from Vault (even when ActiveProfileId is temporarily null) -> restores ModB into JSON & LSX in its profile slot
+        sandbox.Db.ActiveProfileId = null;
+        ModLibraryService.ActivateModFromVault(modB, sandbox.Settings);
+        TestAssert.Equal(ModLocation.Active, modB.Location, "ModB reactivated");
+        ModLibraryService.ReconcileActiveProfileId(sandbox.Settings, sandbox.Db, preferredProfileId: profile.Id);
+
+        ModLibraryService.LoadOrderSyncResult activateSync = ModLibraryService.WriteProfileLoadOrderFiles(
+            profile,
+            sandbox.Settings,
+            sandbox.Db,
+            writeLinkedJson: true,
+            writeModSettingsLsxIfActive: true,
+            onlyActiveModsInJson: true,
+            forceWriteModSettingsLsx: true);
+
+        TestAssert.True(activateSync.JsonWritten && activateSync.LsxWritten, "Activate action syncs both JSON and modsettings.lsx");
+        Bg3LoadOrderFile jsonAfterActivate = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.Equal(3, jsonAfterActivate.Order.Count, "JSON restores 3 active mods");
+        TestAssert.EqualIgnoreCase(uuidC, jsonAfterActivate.Order[0].Uuid, "Activated JSON[0] == ModC");
+        TestAssert.EqualIgnoreCase(uuidA, jsonAfterActivate.Order[1].Uuid, "Activated JSON[1] == ModA");
+        TestAssert.EqualIgnoreCase(uuidB, jsonAfterActivate.Order[2].Uuid, "Activated JSON[2] == ModB");
+
+        List<ModSettingsEntry> lsxAfterActivate = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.Equal(3, lsxAfterActivate.Count, "modsettings.lsx restores 3 active mods");
+        TestAssert.EqualIgnoreCase(uuidB, lsxAfterActivate[2].Uuid, "Activated LSX[2] == ModB");
+
+        // 4. Remove ModA from profile -> removes from profile.ModIds and updates both JSON & modsettings.lsx
+        profile.ModIds.Remove(modA.Id);
+        ModLibraryService.WriteProfileLoadOrderFiles(
+            profile,
+            sandbox.Settings,
+            sandbox.Db,
+            writeLinkedJson: true,
+            writeModSettingsLsxIfActive: true,
+            onlyActiveModsInJson: true,
+            forceWriteModSettingsLsx: true);
+
+        TestAssert.False(profile.ModIds.Contains(modA.Id), "ModA removed from profile.ModIds");
+        Bg3LoadOrderFile jsonAfterRemove = Bg3LoadOrderService.LoadOrderJson(orderJsonPath);
+        TestAssert.Equal(2, jsonAfterRemove.Order.Count, "JSON has 2 mods after removing ModA");
+        TestAssert.EqualIgnoreCase(uuidC, jsonAfterRemove.Order[0].Uuid, "After remove: JSON[0] == ModC");
+        TestAssert.EqualIgnoreCase(uuidB, jsonAfterRemove.Order[1].Uuid, "After remove: JSON[1] == ModB");
+
+        List<ModSettingsEntry> lsxAfterRemove = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.Equal(2, lsxAfterRemove.Count, "LSX has 2 mods after removing ModA");
+        TestAssert.EqualIgnoreCase(uuidC, lsxAfterRemove[0].Uuid, "After remove: LSX[0] == ModC");
+        TestAssert.EqualIgnoreCase(uuidB, lsxAfterRemove[1].Uuid, "After remove: LSX[1] == ModB");
+
+        // 5. Removing a mod from an inactive all-vaulted profile updates its own JSON with remaining vaulted mods without wiping active LSX
+        string otherJsonPath = Path.Combine(sandbox.Settings.OrdersFolder, "InactiveAllVault.json");
+        var inactiveProfile = new ModProfile
+        {
+            Name = "Inactive Vaulted",
+            LinkedOrderJsonPath = otherJsonPath,
+            ModIds = new List<string> { vaultOnly1.Id, vaultOnly2.Id }
+        };
+        sandbox.Db.Profiles.Add(inactiveProfile);
+        sandbox.Db.ActiveProfileId = profile.Id;
+
+        inactiveProfile.ModIds.Remove(vaultOnly1.Id);
+        ModLibraryService.LoadOrderSyncResult inactiveSync = ModLibraryService.WriteProfileLoadOrderFiles(
+            inactiveProfile,
+            sandbox.Settings,
+            sandbox.Db,
+            writeLinkedJson: true,
+            writeModSettingsLsxIfActive: true,
+            onlyActiveModsInJson: false,
+            forceWriteModSettingsLsx: false);
+
+        TestAssert.True(inactiveSync.JsonWritten, "Inactive vaulted profile still updates its own linked JSON");
+        TestAssert.False(inactiveSync.LsxWritten, "Inactive vaulted profile edit does NOT overwrite active profile's modsettings.lsx");
+
+        Bg3LoadOrderFile otherJson = Bg3LoadOrderService.LoadOrderJson(otherJsonPath);
+        TestAssert.Equal(1, otherJson.Order.Count, "Inactive JSON preserves remaining vaulted mod VaultOnly2");
+        TestAssert.EqualIgnoreCase(uuidVault2, otherJson.Order[0].Uuid, "Inactive JSON[0] == VaultOnly2");
+
+        List<ModSettingsEntry> activeLsxPreserved = Bg3LoadOrderService.ReadModSettingsLsx(sandbox.Settings.ModSettingsLsxPath);
+        TestAssert.Equal(2, activeLsxPreserved.Count, "Active profile's modsettings.lsx stayed intact");
     }
 
     private static void WriteZipEntry(ZipArchive archive, string entryName, byte[] data)

@@ -23,6 +23,15 @@ public partial class SettingsView : UserControl
 
         ThemeManager.ThemeChanged += OnExternalThemeChanged;
         LocalizationManager.Instance.LanguageChanged += OnExternalLanguageChanged;
+        _state.StateChanged += OnStateChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+        {
+            Dispatcher.BeginInvoke(UpdateStatusIndicators);
+        }
     }
 
     private void OnExternalThemeChanged(AppTheme theme)
@@ -241,6 +250,42 @@ public partial class SettingsView : UserControl
             LaunchExeStatusText.Text = Loc.F("Settings.LaunchExeMissingFormat", exeRes.ExecutableFileName, exeRes.ExecutablePath);
             LaunchExeStatusText.Foreground = ThemeManager.GetBrush("BrushAmber");
         }
+
+        ScriptExtenderStatus seStatus = ScriptExtenderService.GetStatus(
+            GameFolderBox.Text.Trim(),
+            DataFolderBox.Text.Trim());
+
+        if (!seStatus.GameBinFolderAvailable)
+        {
+            ScriptExtenderStatusText.Text = Loc.T("Settings.ScriptExtenderNoFolder");
+            ScriptExtenderStatusText.Foreground = ThemeManager.GetBrush("BrushTextMuted");
+            InstallScriptExtenderButton.Content = Loc.T("Settings.Btn.InstallSe");
+            RemoveScriptExtenderButton.IsEnabled = false;
+        }
+        else if (seStatus.IsInstalled)
+        {
+            string updaterVer = seStatus.UpdaterVersion ?? "?";
+            ScriptExtenderStatusText.Text = !string.IsNullOrWhiteSpace(seStatus.RuntimeVersion)
+                ? Loc.F("Settings.ScriptExtenderInstalledRuntimeFormat", seStatus.RuntimeVersion, updaterVer, seStatus.DWriteDllPath)
+                : Loc.F("Settings.ScriptExtenderInstalledFormat", updaterVer, seStatus.DWriteDllPath);
+            ScriptExtenderStatusText.Foreground = ThemeManager.GetBrush("BrushGreen");
+            InstallScriptExtenderButton.Content = Loc.T("Settings.Btn.UpdateSe");
+            RemoveScriptExtenderButton.IsEnabled = true;
+        }
+        else if (seStatus.IsForeignDWriteDll)
+        {
+            ScriptExtenderStatusText.Text = Loc.F("Settings.ScriptExtenderForeignFormat", seStatus.DWriteDllPath);
+            ScriptExtenderStatusText.Foreground = ThemeManager.GetBrush("BrushAmber");
+            InstallScriptExtenderButton.Content = Loc.T("Settings.Btn.InstallSe");
+            RemoveScriptExtenderButton.IsEnabled = false;
+        }
+        else
+        {
+            ScriptExtenderStatusText.Text = Loc.F("Settings.ScriptExtenderNotInstalledFormat", seStatus.BinFolderPath);
+            ScriptExtenderStatusText.Foreground = ThemeManager.GetBrush("BrushAmber");
+            InstallScriptExtenderButton.Content = Loc.T("Settings.Btn.InstallSe");
+            RemoveScriptExtenderButton.IsEnabled = false;
+        }
     }
 
     private static void SetDirIndicator(TextBlock label, string path, bool createHint = false)
@@ -300,6 +345,29 @@ public partial class SettingsView : UserControl
     private void OnOpenDataClick(object sender, RoutedEventArgs e) => OpenFolder(DataFolderBox.Text.Trim());
     private void OnOpenOrdersClick(object sender, RoutedEventArgs e) => OpenFolder(OrdersFolderBox.Text.Trim());
     private void OnOpenVaultClick(object sender, RoutedEventArgs e) => OpenFolder(VaultFolderBox.Text.Trim());
+
+    private async void OnInstallScriptExtenderClick(object sender, RoutedEventArgs e)
+    {
+        await ScriptExtenderUiHelper.DownloadAndInstallInteractiveAsync(
+            _state,
+            Window.GetWindow(this),
+            GameFolderBox.Text.Trim(),
+            DataFolderBox.Text.Trim());
+        UpdateStatusIndicators();
+    }
+
+    private void OnRemoveScriptExtenderClick(object sender, RoutedEventArgs e)
+    {
+        ScriptExtenderUiHelper.UninstallInteractive(
+            _state,
+            Window.GetWindow(this),
+            GameFolderBox.Text.Trim(),
+            DataFolderBox.Text.Trim());
+        UpdateStatusIndicators();
+    }
+
+    private void OnOpenScriptExtenderReleasesClick(object sender, RoutedEventArgs e)
+        => ScriptExtenderUiHelper.OpenReleasesPage();
 
     private void OnBrowseLsxClick(object sender, RoutedEventArgs e)
     {

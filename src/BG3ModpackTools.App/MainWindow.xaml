@@ -169,12 +169,14 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition x:Name="QuickActionCol0" Width="*" />
                                     <ColumnDefinition x:Name="QuickActionCol1" Width="0" />
                                     <ColumnDefinition x:Name="QuickActionCol2" Width="0" />
                                     <ColumnDefinition x:Name="QuickActionCol3" Width="0" />
+                                    <ColumnDefinition x:Name="QuickActionCol4" Width="0" />
                                 </Grid.ColumnDefinitions>
 
                                 <Button x:Name="StartBg3Button"
@@ -225,8 +227,19 @@
                                         Grid.Column="0"
                                         Click="OnOpenVaultFolderClick"
                                         Padding="10,5"
-                                        Margin="0">
+                                        Margin="0,0,0,6">
                                     <TextBlock x:Name="OpenVaultFolderText"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Button>
+
+                                <Button x:Name="InstallScriptExtenderButton"
+                                        Grid.Row="4"
+                                        Grid.Column="0"
+                                        Click="OnInstallScriptExtenderClick"
+                                        Padding="10,5"
+                                        Margin="0">
+                                    <TextBlock x:Name="InstallScriptExtenderText"
                                                HorizontalAlignment="Center"
                                                TextTrimming="CharacterEllipsis" />
                                 </Button>
