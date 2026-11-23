@@ -101,6 +101,10 @@ public partial class MainWindow : Window
         ApplyResponsiveLayout(ActualWidth, ActualHeight);
         _gameProcessTimer.Start();
         await RunInitialScanAsync();
+        if (!_shutdownCts.IsCancellationRequested)
+        {
+            await AppUpdateUiHelper.CheckForUpdatesOnStartupAsync(_state, this, _shutdownCts.Token);
+        }
     }
 
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
@@ -118,13 +122,13 @@ public partial class MainWindow : Window
         LayoutTier tier = width >= 1160
             ? LayoutTier.Wide
             : (width >= 900 ? LayoutTier.Medium : LayoutTier.Narrow);
-        bool showDropHint = width >= 1380;
+        bool showDropHint = width >= 1480;
         bool showSubtitle = width >= 1060;
         bool compactHeight = height < 640;
 
         ActiveProfilePillText.MaxWidth = tier == LayoutTier.Narrow
             ? 240
-            : Math.Clamp(width - (showDropHint ? 1040 : 760), 140, 320);
+            : Math.Clamp(width - (showDropHint ? 1140 : 840), 130, 300);
 
         if (_lastLayoutTier == tier &&
             _lastShowSubtitle == showSubtitle &&
@@ -526,6 +530,11 @@ public partial class MainWindow : Window
     private async void OnRefreshClick(object sender, RoutedEventArgs e)
     {
         await RunInitialScanAsync();
+    }
+
+    private async void OnCheckUpdateClick(object sender, RoutedEventArgs e)
+    {
+        await AppUpdateUiHelper.CheckAndUpdateManuallyAsync(_state, this);
     }
 
     private void OnStartBg3Click(object sender, RoutedEventArgs e)

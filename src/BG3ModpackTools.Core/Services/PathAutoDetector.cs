@@ -31,7 +31,8 @@ public static class PathAutoDetector
                 LastExportFolder = existing.LastExportFolder,
                 Theme = existing.Theme,
                 LanguageCode = string.IsNullOrWhiteSpace(existing.LanguageCode) ? "en" : existing.LanguageCode.Trim(),
-                LaunchRenderer = existing.LaunchRenderer
+                LaunchRenderer = existing.LaunchRenderer,
+                CheckUpdatesOnStartup = existing.CheckUpdatesOnStartup
             };
 
         string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

@@ -181,6 +181,31 @@
                 </StackPanel>
             </Border>
 
+            <!-- Application Updates Card -->
+            <Border Style="{StaticResource CardBorder}" Padding="16" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{helpers:Loc Settings.Card.Updates}" FontSize="14.5" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock x:Name="AppVersionText" Style="{StaticResource MutedCaption}" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <CheckBox x:Name="CheckUpdatesOnStartupCheckBox"
+                              Checked="OnCheckUpdatesOnStartupChanged"
+                              Unchecked="OnCheckUpdatesOnStartupChanged"
+                              Margin="0,0,0,10">
+                        <TextBlock Text="{helpers:Loc Settings.CheckUpdatesOnStartupCheck}" TextWrapping="Wrap" />
+                    </CheckBox>
+
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Content="{helpers:Loc Settings.Btn.CheckUpdates}"
+                                Style="{StaticResource AccentButton}"
+                                Click="OnCheckAppUpdateClick"
+                                Margin="0,0,6,6" />
+                        <Button Content="{helpers:Loc Settings.Btn.OpenAppReleases}"
+                                Click="OnOpenAppReleasesClick"
+                                Margin="0,0,0,6" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Behavior Card -->
             <Border Style="{StaticResource CardBorder}" Padding="16" Margin="0,0,0,16">
                 <StackPanel>

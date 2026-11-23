@@ -78,9 +78,28 @@ public partial class SettingsView : UserControl
         SyncLsxCheckBox.IsChecked = s.SyncModSettingsLsxOnSwitch;
         LaunchVulkanRadio.IsChecked = s.LaunchRenderer == Bg3LaunchRenderer.Vulkan;
         LaunchDx11Radio.IsChecked = s.LaunchRenderer == Bg3LaunchRenderer.DirectX11;
+        CheckUpdatesOnStartupCheckBox.IsChecked = s.CheckUpdatesOnStartup;
         _loading = false;
 
         UpdateStatusIndicators();
+    }
+
+    private void OnCheckUpdatesOnStartupChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading || !IsLoaded)
+        {
+            return;
+        }
+
+        bool enabled = CheckUpdatesOnStartupCheckBox.IsChecked == true;
+        if (_state.Settings.CheckUpdatesOnStartup == enabled)
+        {
+            return;
+        }
+
+        _state.Settings.CheckUpdatesOnStartup = enabled;
+        _state.Store.SaveSettings(_state.Settings);
+        _state.Log(Loc.T(enabled ? "Settings.CheckUpdatesOnStartupLogOn" : "Settings.CheckUpdatesOnStartupLogOff"));
     }
 
     private void OnLaunchRendererRadioChecked(object sender, RoutedEventArgs e)
@@ -286,6 +305,12 @@ public partial class SettingsView : UserControl
             InstallScriptExtenderButton.Content = Loc.T("Settings.Btn.InstallSe");
             RemoveScriptExtenderButton.IsEnabled = false;
         }
+
+        AppVersionText.Text = Loc.F("Settings.AppVersionFormat", AppUpdateService.GetCurrentAppVersion());
+        bool prevLoading = _loading;
+        _loading = true;
+        CheckUpdatesOnStartupCheckBox.IsChecked = _state.Settings.CheckUpdatesOnStartup;
+        _loading = prevLoading;
     }
 
     private static void SetDirIndicator(TextBlock label, string path, bool createHint = false)
@@ -369,6 +394,12 @@ public partial class SettingsView : UserControl
     private void OnOpenScriptExtenderReleasesClick(object sender, RoutedEventArgs e)
         => ScriptExtenderUiHelper.OpenReleasesPage();
 
+    private async void OnCheckAppUpdateClick(object sender, RoutedEventArgs e)
+        => await AppUpdateUiHelper.CheckAndUpdateManuallyAsync(_state, Window.GetWindow(this));
+
+    private void OnOpenAppReleasesClick(object sender, RoutedEventArgs e)
+        => AppUpdateUiHelper.OpenReleasesPage();
+
     private void OnBrowseLsxClick(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
@@ -395,7 +426,8 @@ public partial class SettingsView : UserControl
             LastExportFolder = _state.Settings.LastExportFolder,
             Theme = LightThemeRadio.IsChecked == true ? AppTheme.Light : AppTheme.Dark,
             LanguageCode = _state.Settings.LanguageCode,
-            LaunchRenderer = LaunchVulkanRadio.IsChecked == true ? Bg3LaunchRenderer.Vulkan : Bg3LaunchRenderer.DirectX11
+            LaunchRenderer = LaunchVulkanRadio.IsChecked == true ? Bg3LaunchRenderer.Vulkan : Bg3LaunchRenderer.DirectX11,
+            CheckUpdatesOnStartup = CheckUpdatesOnStartupCheckBox.IsChecked == true
         });
         LoadFromSettings(detected);
         _state.Log(Loc.T("Settings.AutoDetectedLog"));
@@ -428,6 +460,7 @@ public partial class SettingsView : UserControl
         _state.Settings.LaunchRenderer = LaunchVulkanRadio.IsChecked == true
             ? Bg3LaunchRenderer.Vulkan
             : Bg3LaunchRenderer.DirectX11;
+        _state.Settings.CheckUpdatesOnStartup = CheckUpdatesOnStartupCheckBox.IsChecked == true;
 
         if (!string.IsNullOrWhiteSpace(_state.Settings.VaultFolder))
         {

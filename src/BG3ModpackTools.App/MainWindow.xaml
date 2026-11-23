@@ -83,6 +83,11 @@
                     <ComboBox x:Name="QuickProfileCombo" Width="200" DisplayMemberPath="Name" Margin="0,0,6,0" />
                     <Button x:Name="QuickSwitchButton" Content="{helpers:Loc Nav.Switch}" Style="{StaticResource AccentButton}" Click="OnQuickSwitchClick" Margin="0,0,8,0" />
                     <Button x:Name="RefreshButton" Content="{helpers:Loc Nav.Refresh}" Click="OnRefreshClick" />
+                    <Button x:Name="UpdateAppButton"
+                            Content="{helpers:Loc Nav.UpdateApp}"
+                            Click="OnCheckUpdateClick"
+                            Margin="8,0,0,0"
+                            ToolTip="{helpers:Loc App.Update.ButtonTooltip}" />
                     <Button x:Name="ThemeToggleButton" Click="OnThemeToggleClick" Margin="8,0,0,0" ToolTip="{helpers:Loc App.ThemeToggleTooltip}" />
                 </StackPanel>
             </Grid>

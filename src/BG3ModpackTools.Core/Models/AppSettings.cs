@@ -60,4 +60,5 @@ public sealed class AppSettings
     public AppTheme Theme { get; set; } = AppTheme.Dark;
     public string LanguageCode { get; set; } = "en";
     public Bg3LaunchRenderer LaunchRenderer { get; set; } = Bg3LaunchRenderer.DirectX11;
+    public bool CheckUpdatesOnStartup { get; set; } = true;
 }
